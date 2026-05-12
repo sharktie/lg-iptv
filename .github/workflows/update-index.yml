@@ -1,0 +1,59 @@
+name: Update Homebrew Index
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  update-index:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Get IPK asset URL
+        id: asset
+        run: |
+          URL=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ github.event.release.tag_name }} \
+          | jq -r '.assets[] | select(.name | endswith(".ipk")) | .browser_download_url')
+
+          echo "ASSET_URL=$URL" >> $GITHUB_ENV
+
+      - name: Validate asset
+        run: |
+          if [ -z "$ASSET_URL" ]; then
+            echo "ERROR: No .ipk asset found"
+            exit 1
+          fi
+
+      - name: Build index.json
+        run: |
+          cat > index.json <<EOF
+{
+  "id": "lg-iptv",
+  "title": "Sharktie IPTV Repo",
+  "apps": [
+    {
+      "id": "lgiptv",
+      "title": "LG IPTV Player",
+      "version": "${{ github.event.release.tag_name }}",
+      "type": "web",
+      "location": "$ASSET_URL",
+      "icon": "https://raw.githubusercontent.com/sharktie/lg-iptv/main/lg-iptv/icon.png",
+      "changelog": "Auto-updated from release"
+    }
+  ]
+}
+EOF
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add index.json
+          git commit -m "Auto update index.json ${{ github.event.release.tag_name }}" || exit 0
+          git push
