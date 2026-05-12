@@ -8,7 +8,7 @@
       "version": "1.0.0",
       "type": "web",
       "location": "https://github.com/sharktie/lg-iptv/releases/download/v1.0.0/lg-iptv.ipk",
-      "icon": "https://raw.githubusercontent.com/sharktie/lg-iptv/main/icon.png",
+      "icon": "https://raw.githubusercontent.com/sharktie/lg-iptv/icon.png",
       "changelog": "Initial release"
     }
   ]
