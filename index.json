@@ -1,12 +1,12 @@
 {
-  "id": "sharktie.iptv.repo",
+  "id": "repo.sharktie.iptv",
   "name": "Sharktie IPTV Repo",
   "version": "1.0.0",
   "description": "IPTV WebOS Homebrew Repository",
   "apps": [
     {
       "id": "com.sharktie.iptv",
-      "title": "Sharktie IPTV",
+      "title": "IPTV player",
       "version": "1.0.0",
       "type": "web",
       "sourceUrl": "https://github.com/sharktie/lg-iptv/releases/download/v1.0.0/com.sharktie.iptv_1.0.0_all.ipk",
