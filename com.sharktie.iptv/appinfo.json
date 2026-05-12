@@ -1,0 +1,9 @@
+{
+  "id": "com.sharktie.iptv",
+  "version": "1.0.0",
+  "vendor": "sharktie",
+  "type": "web",
+  "main": "index.html",
+  "title": "IPTV player",
+  "icon": "icon.png"
+}
