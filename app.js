@@ -823,6 +823,55 @@ function calcProgress(start, end) {
     catch { return 0; }
 }
 
+async function checkForUpdates() {
+    try {
+        const localResponse = await fetch('./manifest.json');
+        const localManifest = await localResponse.json();
+        const currentVersion = localManifest.version;
+
+        const remoteResponse = await fetch('https://github.com/sharktie/lg-iptv/releases/latest/download/manifest.json');
+        const remoteManifest = await remoteResponse.json();
+
+        if (compareVersions(remoteManifest.version, currentVersion) > 0) {
+            console.log('Update available:', remoteManifest.version);
+            await installUpdate(remoteManifest.ipk_url);
+        } else {
+            console.log('App is up to date');
+        }
+    } catch (e) {
+        console.log('Update check failed:', e);
+    }
+}
+
+function compareVersions(v1, v2) {
+    const parts1 = v1.split('.').map(Number);
+    const parts2 = v2.split('.').map(Number);
+    for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
+        const part1 = parts1[i] || 0;
+        const part2 = parts2[i] || 0;
+        if (part1 > part2) return 1;
+        if (part1 < part2) return -1;
+    }
+    return 0;
+}
+
+async function installUpdate(ipkUrl) {
+    return new Promise((resolve, reject) => {
+        webOS.service.request("luna://com.webos.appInstallService/dev/install", {
+            method: "install",
+            parameters: { ipkUrl: ipkUrl },
+            onSuccess: function (res) {
+                console.log('Install success:', res);
+                resolve(res);
+            },
+            onFailure: function (err) {
+                console.log('Install failed:', err);
+                reject(err);
+            }
+        });
+    });
+}
+
 
 window.onload = function () {
     
@@ -831,6 +880,8 @@ window.onload = function () {
 
     
     loadXMLTVFromCache();
+
+    checkForUpdates();
 
     initVirtualScroll();
     initSettingsTabs();
