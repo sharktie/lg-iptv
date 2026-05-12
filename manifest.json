@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "web",
   "title": "IPTV Player",
-  "sourceUrl": "https://github.com/sharktie/lg-iptv/releases/download/v1.0.0/lg-iptv.ipk",
+  "sourceUrl": "https://github.com/sharktie/lg-iptv/releases/download/v1.0.0/com.sharktie.iptv_1.0.0_all.ipk",
   "iconUri": "https://raw.githubusercontent.com/sharktie/lg-iptv/main/icon.png",
   "rootRequired": false,
     "ipkUrl": "com.sharktie.lgiptv_1.0.0_all.ipk",
