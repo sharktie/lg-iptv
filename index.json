@@ -1,16 +1,21 @@
 {
-  "id": "lg-iptv",
-  "title": "Sharktie IPTV Repo",
-  "apps": [
-    {
-      "id": "lgiptv",
-      "title": "LG IPTV Player",
-      "version": "1.0.0",
-      "type": "web",
-      "location": "https://github.com/sharktie/lg-iptv/releases/download/v1.0.0/lg-iptv.ipk",
-      "icon": "https://raw.githubusercontent.com/sharktie/lg-iptv/icon.png",
-      "changelog": "Initial release"
-    }
-  ]
+  "id": "sharktie.iptv.repo",
+  "name": "Sharktie IPTV Repo",
+  "version": "1.0.0",
+  "description": "Sharktie IPTV WebOS Homebrew Channel",
+  "manifest": {
+    "apps": [
+      {
+        "id": "com.sharktie.iptv",
+        "version": "1.0.0",
+        "type": "web",
+        "title": "Sharktie IPTV",
+        "iconUri": "https://raw.githubusercontent.com/sharktie/lg-iptv/main/icon.png",
+        "sourceUrl": "https://github.com/sharktie/lg-iptv/releases/download/v1.0.0/com.sharktie.iptv_1.0.0_all.ipk",
+        "bgColor": "#000000",
+        "resolution": "1920x1080",
+        "installType": "ipk"
+      }
+    ]
+  }
 }
-
