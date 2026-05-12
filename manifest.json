@@ -1,15 +1,5 @@
 {
-  "id": "com.sharktie.lgiptv", 
-  "version": "1.0.0",
-  "type": "web",
-  "title": "IPTV Player",
-  "sourceUrl": "https://github.com/sharktie/lg-iptv",
-  "iconUri": "https://raw.githubusercontent.com/sharktie/lg-iptv/main/icon.png",
-  "rootRequired": false,
-    "ipkUrl": "com.sharktie.lgiptv_1.0.0_all.ipk",
-    "ipkHash": {
-        "sha256": "af947382e98fbf537900d02f20d2d12b1d60d010e4b61ccf579a95f911d853e6"
-    },
-    "ipkSize": 53248
-
+  "version": "1.0.1",
+  "ipk_url": "https://github.com/sharktie/lg-iptv/releases/download/v1.0.1/lg-iptv.ipk",
+  "notes": "Update notes"
 }
