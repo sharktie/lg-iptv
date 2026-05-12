@@ -825,11 +825,14 @@ function calcProgress(start, end) {
 
 async function checkForUpdates() {
     try {
-        const localResponse = await fetch('./manifest.json');
+        const localResponse = await fetch('../appinfo.json');
         const localManifest = await localResponse.json();
         const currentVersion = localManifest.version;
 
-        const remoteResponse = await fetch('https://github.com/sharktie/lg-iptv/releases/latest/download/manifest.json');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+        const remoteResponse = await fetch('https://github.com/sharktie/lg-iptv/releases/latest/download/manifest.json', { signal: controller.signal });
+        clearTimeout(timeoutId);
         const remoteManifest = await remoteResponse.json();
 
         if (compareVersions(remoteManifest.version, currentVersion) > 0) {
@@ -881,14 +884,13 @@ window.onload = function () {
     
     loadXMLTVFromCache();
 
-    checkForUpdates();
-
     initVirtualScroll();
     initSettingsTabs();
     initSettingsPanel();
     initTVNavigation();
     initApp();
 
+    setTimeout(checkForUpdates, 2000); // Check for updates 2 seconds after app init
     
     const savedEpgUrl = load("iptv_custom_epg_url", "");
     if (savedEpgUrl) {
@@ -897,6 +899,7 @@ window.onload = function () {
         setTimeout(() => mergeXMLTVIntoEpgCache(), 2000);
     }
 };
+
 
 function initSettingsTabs() {
     document.querySelectorAll(".sidebar-tab").forEach(tab => {
