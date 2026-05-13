@@ -561,6 +561,10 @@ function showGroupContextMenu(e, gid) {
     mkItem("Rename", false, () => { const g = favGroups.find(x => x.id === gid); if (g) promptRenameGroup(gid, g.name); });
     mkItem("Delete Group", true, () => { if (confirm("Delete this group? Channels stay in Favourites.")) { deleteFavGroup(gid); renderFavSectionList(); applyFilters(); } });
     document.body.appendChild(menu);
+    // D-pad: auto-focus first item
+    _ctxMenuIndex = 0;
+    const items = Array.from(menu.querySelectorAll(".ctx-item"));
+    _focusCtxItem(menu, items);
     setTimeout(() => document.addEventListener("click", closeContextMenus, { once: true }), 0);
 }
 function closeContextMenus() { document.querySelectorAll(".ctx-menu").forEach(m => m.remove()); }
@@ -586,6 +590,11 @@ function showAssignPanel(e, sid, anchorEl) {
     const rect = anchorEl.getBoundingClientRect();
     panel.style.cssText = `position:fixed;right:${window.innerWidth - rect.right}px;top:${rect.bottom + 4}px`;
     document.body.appendChild(panel);
+    // D-pad: auto-focus first item
+    _assignPanelIndex = 0;
+    const items = Array.from(panel.querySelectorAll(".assign-row, .assign-new-btn"));
+    _focusAssignItem(panel, items);
+    // Mouse close
     function onOutsideClick(ev) { if (!panel.contains(ev.target)) { closeAssignPanels(); document.removeEventListener("mousedown", onOutsideClick); } }
     setTimeout(() => document.addEventListener("mousedown", onOutsideClick), 0);
 }
@@ -605,11 +614,12 @@ function showInputModal(heading, label, value, callback) {
     const btns = document.createElement("div"); btns.className = "modal-btns";
     const cancel = document.createElement("button"); cancel.className = "modal-btn"; cancel.textContent = "Cancel"; cancel.onclick = () => overlay.remove();
     const ok = document.createElement("button"); ok.className = "modal-btn modal-btn-ok"; ok.textContent = "OK"; ok.onclick = () => { overlay.remove(); callback(inp.value.trim()); };
-    inp.onkeydown = e => { if (e.key === "Enter") ok.click(); if (e.key === "Escape") overlay.remove(); };
+    inp.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); ok.click(); } if (e.key === "Escape") { e.preventDefault(); overlay.remove(); } };
     btns.appendChild(cancel); btns.appendChild(ok);
     box.appendChild(h); box.appendChild(inp); box.appendChild(btns);
     overlay.appendChild(box); document.body.appendChild(overlay);
-    setTimeout(() => inp.focus(), 50);
+    // Always auto-focus the text input so typing works immediately
+    setTimeout(() => { inp.focus(); inp.select(); }, 50);
 }
 
 
@@ -908,7 +918,14 @@ function initSettingsTabs() {
             document.querySelectorAll(".sidebar-panel").forEach(p => p.classList.remove("active"));
             tab.classList.add("active");
             document.getElementById("panel-" + tab.dataset.tab).classList.add("active");
-            if (tab.dataset.tab === "settings") populateSettingsForm();
+            if (tab.dataset.tab === "settings") {
+                populateSettingsForm();
+                // If we arrived here via D-pad, switch zone to settings
+                if (_tvUsingKeyboard) { tvSidebarIndex = 0; setTVZone("settings"); }
+            } else {
+                // Channels tab
+                if (_tvUsingKeyboard) { tvSidebarIndex = 0; setTVZone("sidebar-cats"); }
+            }
         });
     });
 }
@@ -1116,12 +1133,15 @@ let tvRowIndex  = 0;
 let tvSidebarIndex = 0; 
 let _tvUsingKeyboard = false;
 let _fsEnterPressTimer = null;
+// When true the focused settings input/select is in "edit mode" — keys go to the field
+let _settingsInputActive = false;
 
 function initTVNavigation() {
     document.addEventListener("keydown", onTVKeyDown, { passive: false });
     
     document.addEventListener("mousedown", () => {
         _tvUsingKeyboard = false;
+        _settingsInputActive = false;
         document.querySelectorAll(".tv-focus-visible").forEach(el => el.classList.remove("tv-focus-visible"));
     });
 }
@@ -1130,42 +1150,92 @@ function initTVNavigation() {
 let tvRowSubZone = "row";
 
 function onTVKeyDown(e) {
-    
+    const key = e.key;
+
+    // ── Modal dialog (highest priority) ──────────────────────────────────────
+    const modal = document.querySelector(".modal-overlay");
+    if (modal) {
+        _handleModalKey(e, modal);
+        return;
+    }
+
+    // ── Assign panel ─────────────────────────────────────────────────────────
+    const assignPanel = document.querySelector(".assign-panel");
+    if (assignPanel) {
+        _handleAssignPanelKey(e, assignPanel);
+        return;
+    }
+
+    // ── Context menu ─────────────────────────────────────────────────────────
+    const ctxMenu = document.querySelector(".ctx-menu");
+    if (ctxMenu) {
+        _handleCtxMenuKey(e, ctxMenu);
+        return;
+    }
+
+    // ── Settings input active (typing mode) ─────────────────────────────────
+    if (_settingsInputActive) {
+        const activeEl = document.activeElement;
+        if (key === "Escape") {
+            e.preventDefault();
+            _settingsInputActive = false;
+            if (activeEl) { activeEl.blur(); activeEl.classList.remove("tv-input-active"); }
+            setTVZone("settings");
+        }
+        // For SELECT elements handle with arrow keys normally but intercept Enter
+        if (activeEl?.tagName === "SELECT" && key === "Enter") {
+            e.preventDefault();
+            _settingsInputActive = false;
+            activeEl.blur(); activeEl.classList.remove("tv-input-active");
+            setTVZone("settings");
+        }
+        // All other keys pass through to the input
+        return;
+    }
+
+    // ── Suppress navigation when a plain input has browser focus (fallback) ──
     const tag = document.activeElement?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
-        if (e.key === "Escape") { document.activeElement.blur(); setTVZone("channel-list"); }
+        if (key === "Escape") { document.activeElement.blur(); setTVZone("channel-list"); }
         return;
     }
 
     _tvUsingKeyboard = true;
-    const key = e.key;
     const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
 
+    // ── Up / Down ─────────────────────────────────────────────────────────────
     if (key === "ArrowUp" || key === "ArrowDown") {
         e.preventDefault();
-        if (isFs) {
-            
-            channelStep(key === "ArrowUp" ? -1 : 1);
-            showOSD();
-            return;
-        }
+        if (isFs) { channelStep(key === "ArrowUp" ? -1 : 1); showOSD(); return; }
+        const delta = key === "ArrowUp" ? -1 : 1;
+
         if (tvFocusZone === "channel-list") {
             tvRowSubZone = "row";
-            const delta = key === "ArrowUp" ? -1 : 1;
             tvRowIndex = Math.max(0, Math.min(_vsChannels.length - 1, tvRowIndex + delta));
             tvFocusRow(tvRowIndex);
-        } else if (tvFocusZone === "sidebar-cats") {
+        } else if (tvFocusZone === "sidebar-cats" || tvFocusZone === "settings") {
             const items = getSidebarFocusables();
-            const delta = key === "ArrowUp" ? -1 : 1;
-            tvSidebarIndex = Math.max(0, Math.min(items.length - 1, tvSidebarIndex + delta));
-            tvFocusSidebarItem(tvSidebarIndex);
+            if (key === "ArrowUp" && tvSidebarIndex === 0) {
+                // Navigate up into the tab bar
+                setTVZone("sidebar-tabs");
+            } else {
+                tvSidebarIndex = Math.max(0, Math.min(items.length - 1, tvSidebarIndex + delta));
+                tvFocusSidebarItem(tvSidebarIndex);
+            }
         } else if (tvFocusZone === "tl-nav") {
-            
             if (key === "ArrowUp") setTVZone("channel-list");
+        } else if (tvFocusZone === "sidebar-tabs") {
+            // Move down into the active panel
+            if (key === "ArrowDown") {
+                const activeTab = document.querySelector(".sidebar-tab.active");
+                if (activeTab?.dataset.tab === "settings") setTVZone("settings");
+                else setTVZone("sidebar-cats");
+            }
         }
         return;
     }
 
+    // ── Left ──────────────────────────────────────────────────────────────────
     if (key === "ArrowLeft") {
         e.preventDefault();
         if (isFs) { showOSD(); return; }
@@ -1173,39 +1243,42 @@ function onTVKeyDown(e) {
             if (tvRowSubZone === "assign") { tvRowSubZone = "fav"; tvFocusRowButtons(); }
             else if (tvRowSubZone === "fav") { tvRowSubZone = "row"; tvFocusRow(tvRowIndex); }
             else { setTVZone("sidebar-cats"); }
-        } else if (tvFocusZone === "tl-nav") { setTVZone("channel-list"); }
-        return;
-    }
-
-    if (key === "ArrowRight") {
-        e.preventDefault();
-        if (isFs) { showOSD(); return; }
-        if (tvFocusZone === "sidebar-cats") { setTVZone("channel-list"); }
-        else if (tvFocusZone === "channel-list") {
-            const ch = _vsChannels[tvRowIndex];
-            const entry = ch ? rowCache.get(String(ch.stream_id)) : null;
-            if (tvRowSubZone === "row") {
-                
-                tvRowSubZone = "fav"; tvFocusRowButtons();
-            } else if (tvRowSubZone === "fav") {
-                
-                if (entry?.assignBtn && entry.assignBtn.style.display !== "none") {
-                    tvRowSubZone = "assign"; tvFocusRowButtons();
-                } else {
-                    setTVZone("tl-nav");
-                }
-            } else {
-                setTVZone("tl-nav");
-            }
+        } else if (tvFocusZone === "tl-nav") {
+            setTVZone("channel-list");
+        } else if (tvFocusZone === "sidebar-tabs") {
+            _moveSidebarTab(-1);
         }
         return;
     }
 
+    // ── Right ─────────────────────────────────────────────────────────────────
+    if (key === "ArrowRight") {
+        e.preventDefault();
+        if (isFs) { showOSD(); return; }
+        if (tvFocusZone === "sidebar-cats" || tvFocusZone === "settings") {
+            setTVZone("channel-list");
+        } else if (tvFocusZone === "channel-list") {
+            const ch = _vsChannels[tvRowIndex];
+            const entry = ch ? rowCache.get(String(ch.stream_id)) : null;
+            if (tvRowSubZone === "row") {
+                tvRowSubZone = "fav"; tvFocusRowButtons();
+            } else if (tvRowSubZone === "fav") {
+                if (entry?.assignBtn && entry.assignBtn.style.display !== "none") {
+                    tvRowSubZone = "assign"; tvFocusRowButtons();
+                } else { setTVZone("tl-nav"); }
+            } else {
+                setTVZone("tl-nav");
+            }
+        } else if (tvFocusZone === "sidebar-tabs") {
+            _moveSidebarTab(1);
+        }
+        return;
+    }
+
+    // ── Enter / OK ────────────────────────────────────────────────────────────
     if (key === "Enter" || key === " ") {
         e.preventDefault();
-        const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
         if (isFs) {
-            
             if (_fsEnterPressTimer) {
                 clearTimeout(_fsEnterPressTimer);
                 _fsEnterPressTimer = null;
@@ -1216,11 +1289,11 @@ function onTVKeyDown(e) {
             }
             return;
         }
+
         if (tvFocusZone === "channel-list") {
             const ch = _vsChannels[tvRowIndex];
             if (!ch) return;
             if (tvRowSubZone === "fav") {
-                
                 toggleFav(String(ch.stream_id));
                 const entry = rowCache.get(String(ch.stream_id));
                 if (entry) entry.favBtn.classList.toggle("active", isFav(String(ch.stream_id)));
@@ -1229,50 +1302,67 @@ function onTVKeyDown(e) {
                 const entry = rowCache.get(String(ch.stream_id));
                 if (entry?.assignBtn) entry.assignBtn.click();
             } else {
-                
                 if (currentChannel && String(currentChannel.stream_id) === String(ch.stream_id)) {
                     toggleFullscreen();
-                } else {
-                    selectChannel(ch);
-                }
+                } else { selectChannel(ch); }
             }
         } else if (tvFocusZone === "sidebar-cats") {
             const items = getSidebarFocusables();
             const el = items[tvSidebarIndex];
             if (el) el.click();
+        } else if (tvFocusZone === "settings") {
+            const items = getSidebarFocusables();
+            const el = items[tvSidebarIndex];
+            if (!el) return;
+            if (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT") {
+                // Enter edit/type mode
+                _settingsInputActive = true;
+                el.classList.add("tv-input-active");
+                el.focus();
+                if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") {
+                    // Move caret to end
+                    const len = el.value.length;
+                    try { el.setSelectionRange(len, len); } catch {}
+                }
+            } else {
+                el.click();
+            }
         } else if (tvFocusZone === "tl-nav") {
             const btns = document.querySelectorAll(".tl-nav-btn");
             const focused = Array.from(btns).find(b => b.classList.contains("tv-focus-visible"));
+            if (focused) focused.click();
+        } else if (tvFocusZone === "sidebar-tabs") {
+            const tabs = Array.from(document.querySelectorAll(".sidebar-tab"));
+            const focused = tabs.find(t => t.classList.contains("tv-focus-visible"));
             if (focused) focused.click();
         }
         return;
     }
 
-    
+    // ── Escape / Back ─────────────────────────────────────────────────────────
     if (key === "Escape" || key === "GoBack" || key === "Back" || key === "BrowserBack") {
         const isFs2 = !!(document.fullscreenElement || document.webkitFullscreenElement);
         if (isFs2) { e.preventDefault(); toggleFullscreen(); return; }
+        if (tvFocusZone === "settings" || tvFocusZone === "sidebar-tabs") {
+            e.preventDefault();
+            setTVZone("channel-list");
+        }
         return;
     }
 
-    
-    
+    // ── Channel up/down media keys ────────────────────────────────────────────
     if (key === "PageUp"   || key === "ChannelUp"   || key === "MediaTrackPrevious") {
-        e.preventDefault();
-        channelStep(-1);
-        const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
-        if (isFs) showOSD();
+        e.preventDefault(); channelStep(-1);
+        if (!!(document.fullscreenElement || document.webkitFullscreenElement)) showOSD();
         return;
     }
     if (key === "PageDown" || key === "ChannelDown" || key === "MediaTrackNext") {
-        e.preventDefault();
-        channelStep(1);
-        const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
-        if (isFs) showOSD();
+        e.preventDefault(); channelStep(1);
+        if (!!(document.fullscreenElement || document.webkitFullscreenElement)) showOSD();
         return;
     }
 
-    
+    // ── Shortcut: F = favourite ───────────────────────────────────────────────
     if (key === "f" || key === "F") {
         if (tvFocusZone === "channel-list") {
             const ch = _vsChannels[tvRowIndex];
@@ -1286,7 +1376,7 @@ function onTVKeyDown(e) {
         return;
     }
 
-    
+    // ── Tab key zone cycling ──────────────────────────────────────────────────
     if (key === "Tab") {
         e.preventDefault();
         const zones = ["sidebar-cats", "channel-list", "tl-nav"];
@@ -1296,24 +1386,167 @@ function onTVKeyDown(e) {
         return;
     }
 
-    
+    // ── Shortcut: S = settings, C = channels ─────────────────────────────────
     if (key === "s" || key === "S") {
         document.getElementById("tab-settings").click();
         setTVZone("settings");
         return;
     }
-    
     if (key === "c" || key === "C") {
         document.getElementById("tab-channels").click();
         setTVZone("sidebar-cats");
     }
 }
 
+// ── Sidebar tab helper: move focus left/right between tabs ───────────────────
+function _moveSidebarTab(delta) {
+    const tabs = Array.from(document.querySelectorAll(".sidebar-tab"));
+    const focused = tabs.findIndex(t => t.classList.contains("tv-focus-visible"));
+    const next = Math.max(0, Math.min(tabs.length - 1, (focused < 0 ? 0 : focused) + delta));
+    document.querySelectorAll(".tv-focus-visible").forEach(el => el.classList.remove("tv-focus-visible"));
+    tabs[next]?.classList.add("tv-focus-visible");
+}
+
+// ── Modal key handler ────────────────────────────────────────────────────────
+function _handleModalKey(e, modal) {
+    const key = e.key;
+    const inp = modal.querySelector(".modal-input");
+    const okBtn = modal.querySelector(".modal-btn-ok");
+    const cancelBtn = modal.querySelector(".modal-btn:not(.modal-btn-ok)");
+    const focusedBtn = modal.querySelector(".modal-btn.tv-focus-visible");
+
+    if (key === "Escape") {
+        e.preventDefault();
+        modal.remove();
+        return;
+    }
+
+    // If the text input has focus, Enter moves to OK button
+    if (document.activeElement === inp) {
+        if (key === "Enter") {
+            e.preventDefault();
+            inp.blur();
+            _setModalFocus(modal, okBtn);
+        }
+        // All other keys pass through to the input
+        return;
+    }
+
+    e.preventDefault();
+
+    if (key === "ArrowLeft" || key === "ArrowRight" || key === "ArrowUp" || key === "ArrowDown") {
+        // Toggle between OK and Cancel
+        if (focusedBtn === okBtn) _setModalFocus(modal, cancelBtn);
+        else if (focusedBtn === cancelBtn) _setModalFocus(modal, okBtn);
+        else _setModalFocus(modal, inp); // focus input if nothing focused
+        return;
+    }
+
+    if (key === "Enter" || key === " ") {
+        if (focusedBtn) { focusedBtn.click(); return; }
+        // Default: focus input
+        inp?.focus();
+        return;
+    }
+
+    // Any printable char while modal is open but input not focused → focus input
+    if (key.length === 1) {
+        inp?.focus();
+    }
+}
+
+function _setModalFocus(modal, el) {
+    modal.querySelectorAll(".tv-focus-visible").forEach(x => x.classList.remove("tv-focus-visible"));
+    if (el) {
+        el.classList.add("tv-focus-visible");
+        if (el.tagName === "INPUT") { el.focus(); }
+    }
+}
+
+// ── Assign panel key handler ─────────────────────────────────────────────────
+let _assignPanelIndex = 0;
+
+function _handleAssignPanelKey(e, panel) {
+    const key = e.key;
+    if (key === "Escape" || key === "GoBack" || key === "Back") {
+        e.preventDefault();
+        closeAssignPanels();
+        return;
+    }
+    const items = Array.from(panel.querySelectorAll(".assign-row, .assign-new-btn"));
+    if (!items.length) return;
+
+    if (key === "ArrowUp" || key === "ArrowDown") {
+        e.preventDefault();
+        _assignPanelIndex = Math.max(0, Math.min(items.length - 1, _assignPanelIndex + (key === "ArrowDown" ? 1 : -1)));
+        _focusAssignItem(panel, items);
+        return;
+    }
+    if (key === "Enter" || key === " ") {
+        e.preventDefault();
+        const el = items[_assignPanelIndex];
+        if (!el) return;
+        if (el.classList.contains("assign-new-btn")) { el.click(); return; }
+        // Toggle the checkbox in the row
+        const cb = el.querySelector("input[type='checkbox']");
+        if (cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event("change")); }
+        _focusAssignItem(panel, items);
+        return;
+    }
+    e.preventDefault();
+}
+
+function _focusAssignItem(panel, items) {
+    panel.querySelectorAll(".tv-focus-visible").forEach(el => el.classList.remove("tv-focus-visible"));
+    const el = items[_assignPanelIndex];
+    if (el) { el.classList.add("tv-focus-visible"); el.scrollIntoView({ block: "nearest" }); }
+}
+
+// ── Context menu key handler ─────────────────────────────────────────────────
+let _ctxMenuIndex = 0;
+
+function _handleCtxMenuKey(e, menu) {
+    const key = e.key;
+    if (key === "Escape" || key === "GoBack" || key === "Back") {
+        e.preventDefault();
+        closeContextMenus();
+        return;
+    }
+    const items = Array.from(menu.querySelectorAll(".ctx-item"));
+    if (!items.length) return;
+
+    if (key === "ArrowUp" || key === "ArrowDown") {
+        e.preventDefault();
+        _ctxMenuIndex = Math.max(0, Math.min(items.length - 1, _ctxMenuIndex + (key === "ArrowDown" ? 1 : -1)));
+        _focusCtxItem(menu, items);
+        return;
+    }
+    if (key === "Enter" || key === " ") {
+        e.preventDefault();
+        items[_ctxMenuIndex]?.click();
+        return;
+    }
+    e.preventDefault();
+}
+
+function _focusCtxItem(menu, items) {
+    menu.querySelectorAll(".tv-focus-visible").forEach(el => el.classList.remove("tv-focus-visible"));
+    const el = items[_ctxMenuIndex];
+    if (el) { el.classList.add("tv-focus-visible"); el.scrollIntoView({ block: "nearest" }); }
+}
+
 function setTVZone(zone) {
+    // Deactivate any settings input that was active
+    if (_settingsInputActive) {
+        _settingsInputActive = false;
+        const activeEl = document.activeElement;
+        if (activeEl) { activeEl.blur(); activeEl.classList.remove("tv-input-active"); }
+    }
     tvFocusZone = zone;
     tvRowSubZone = "row";
     document.querySelectorAll(".tv-focus-visible").forEach(el => el.classList.remove("tv-focus-visible"));
-    if (zone === "sidebar-cats") {
+
+    if (zone === "sidebar-cats" || zone === "settings") {
         const items = getSidebarFocusables();
         tvSidebarIndex = Math.max(0, Math.min(items.length - 1, tvSidebarIndex));
         tvFocusSidebarItem(tvSidebarIndex);
@@ -1323,6 +1556,12 @@ function setTVZone(zone) {
     } else if (zone === "tl-nav") {
         const btn = document.getElementById("tl-now");
         if (btn) btn.classList.add("tv-focus-visible");
+    } else if (zone === "sidebar-tabs") {
+        tvSidebarIndex = 0;
+        // Focus whichever tab is currently active
+        const activeTab = document.querySelector(".sidebar-tab.active");
+        if (activeTab) activeTab.classList.add("tv-focus-visible");
+        else document.querySelector(".sidebar-tab")?.classList.add("tv-focus-visible");
     }
 }
 

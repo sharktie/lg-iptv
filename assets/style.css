@@ -561,3 +561,45 @@ html, body {
 
 
 #pip-wrap.pip-fullscreen-active #fs-osd { font-size: clamp(12px, 1.8vw, 22px); }
+
+/* D-pad: input field in active edit/type mode */
+.tv-input-active {
+    border-color: var(--gold) !important;
+    box-shadow: 0 0 0 3px rgba(197,153,10,0.35) !important;
+    outline: none !important;
+}
+
+/* D-pad: sidebar tab focused state */
+.sidebar-tab.tv-focus-visible {
+    outline: 3px solid var(--accent) !important;
+    outline-offset: -3px !important;
+    background: var(--bg4) !important;
+    color: var(--text) !important;
+}
+
+/* D-pad: assign-row focused */
+.assign-row.tv-focus-visible {
+    background: var(--bg4);
+    outline: 2px solid var(--gold-dim);
+    outline-offset: -2px;
+}
+
+/* D-pad: assign new-group button focused */
+.assign-new-btn.tv-focus-visible {
+    background: rgba(197,153,10,0.12);
+    outline: 2px solid var(--gold-dim);
+    outline-offset: -2px;
+}
+
+/* D-pad: context menu item focused */
+.ctx-item.tv-focus-visible {
+    background: var(--bg4);
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
+/* D-pad: modal button focused */
+.modal-btn.tv-focus-visible {
+    outline: 3px solid var(--gold) !important;
+    outline-offset: 2px !important;
+}
