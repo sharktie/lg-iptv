@@ -194,6 +194,10 @@ function _bootUI(categories) {
     renderFavSectionList();
     updateSidebarActive();
     applyFilters();
+
+    // Put the focus ring on the Channels tab immediately so the app doesn't
+    // look frozen — user can navigate straight away without a "wake-up" keypress.
+    setTVZone("sidebar-tabs");
 }
 
 
@@ -325,17 +329,9 @@ function _buildRow(ch, sid) {
     row.appendChild(epgStrip); row.appendChild(favBtn);
     row.appendChild(assignBtn); row.appendChild(reorder);
     
-    let _rowClickTimer = null;
-    row.addEventListener("click", () => {
-        if (_rowClickTimer) {
-            clearTimeout(_rowClickTimer);
-            _rowClickTimer = null;
-            selectChannel(ch);
-            toggleFullscreen();
-        } else {
-            _rowClickTimer = setTimeout(() => { _rowClickTimer = null; selectChannel(ch); }, 250);
-        }
-    });
+    // Single click: select (and play). On TV the remote Enter key handles
+    // fullscreen toggle when the same channel is already selected.
+    row.addEventListener("click", () => selectChannel(ch));
 
     return { row, epgStrip, favBtn, assignBtn, reorder };
 }
@@ -1249,7 +1245,11 @@ let _settingsInputActive = false;
 
 function initTVNavigation() {
     document.addEventListener("keydown", onTVKeyDown, { passive: false });
-    
+
+    // webOS: tell the OS this app handles the back button itself.
+    // Without this the system intercepts it and shows the "exit app" prompt.
+    try { if (typeof webOSSystem !== "undefined") webOSSystem.notifyAppLoaded(); } catch (_) {}
+
     document.addEventListener("mousedown", () => {
         _tvUsingKeyboard = false;
         _settingsInputActive = false;
@@ -1451,13 +1451,22 @@ function onTVKeyDown(e) {
     }
 
     // ── Escape / Back ─────────────────────────────────────────────────────────
-    if (key === "Escape" || key === "GoBack" || key === "Back" || key === "BrowserBack") {
+    // LG remotes fire keyCode 461 for the back button; key string varies by webOS version.
+    const isBackKey = key === "Escape" || key === "GoBack" || key === "Back" ||
+                      key === "BrowserBack" || e.keyCode === 461;
+    if (isBackKey) {
         const isFs2 = !!(document.fullscreenElement || document.webkitFullscreenElement);
-        if (isFs2) { e.preventDefault(); toggleFullscreen(); return; }
+        if (isFs2) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            toggleFullscreen();
+            return;
+        }
         if (tvFocusZone === "settings" || tvFocusZone === "sidebar-tabs") {
             e.preventDefault();
             setTVZone("channel-list");
         }
+        // In all other non-fullscreen cases let the OS handle it (exit app)
         return;
     }
 

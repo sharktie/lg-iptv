@@ -133,7 +133,11 @@ html, body {
     -webkit-transform: translateZ(0);
     transform: translateZ(0);
 }
-#pip-wrap:hover, #pip-wrap.tv-focus-visible { border-color: var(--accent); }
+/* No red ring on the pip — it's a video player, not a focusable button */
+#pip-wrap:hover { border-color: var(--bg5); }
+#pip-wrap:-webkit-full-screen,
+#pip-wrap:fullscreen,
+#pip-wrap.pip-fullscreen-active { width: 100vw; height: 100vh; border-radius: 0; border: none; outline: none; }
 #player { width: 100%; height: 100%; display: block; object-fit: contain; }
 #player-msg {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -156,8 +160,6 @@ html, body {
     cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
 #pip-fullscreen-btn:hover, #pip-fullscreen-btn.tv-focus-visible { background: var(--accent); }
-#pip-wrap:-webkit-full-screen,
-#pip-wrap:fullscreen { width: 100vw; height: 100vh; border-radius: 0; }
 
 
 #sidebar {

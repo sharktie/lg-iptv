@@ -1,6 +1,6 @@
 const _inFlight = {};
 
-function _fetchJSON(url, timeoutMs = 8000) {
+function _fetchJSON(url, timeoutMs = 10000) {
     if (_inFlight[url]) return _inFlight[url];
     const p = (async () => {
         for (let attempt = 0; attempt < 2; attempt++) {
@@ -13,7 +13,8 @@ function _fetchJSON(url, timeoutMs = 8000) {
                 return await r.json();
             } catch (err) {
                 clearTimeout(tid);
-                if (attempt === 0 && err.name !== "AbortError" && !String(err).startsWith("Error: HTTP")) continue;
+                // Only retry on AbortError (timeout) — not on HTTP errors or JSON parse failures
+                if (attempt === 0 && err.name === "AbortError") continue;
                 throw err;
             }
         }
