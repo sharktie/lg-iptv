@@ -1,9 +1,12 @@
 {
+  "id": "com.sharktie.lgiptv",
+  "title": "LG IPTV",
   "version": "1.0.0",
-  "ipk_url": "https://github.com/sharktie/lg-iptv/releases/download/v1.0.0/com.sharktie.iptv_1.0.0_all.ipk",
-  "id": "com.sharktie.iptv",
-  "title": "IPTV player",
-  "type": "web",
-  "main": "index.html",
-  "icon": "icon.png"
+  "ipkUrl": "https://github.com/sharktie/lg-iptv/releases/download/v1.0.0/YOUR_FILE.ipk",
+  "ipkHash": {
+    "sha256": "YOUR_SHA256_HASH_HERE"
+  },
+  "iconUri": "https://raw.githubusercontent.com/sharktie/lg-iptv/main/icon.png",
+  "sourceUrl": "https://github.com/sharktie/lg-iptv",
+  "shortDescription": "Free IPTV app for LG TVs"
 }
