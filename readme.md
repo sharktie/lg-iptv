@@ -7,6 +7,6 @@ Download instructions.
 
 you can either download ipk file from releases and install it urself using WebOS dev manager or add repo to homebrew channel using the repo below
 
-repo: https://raw.githubusercontent.com/sharktie/lg-iptv/webosbrew/index.json
+repo: https://raw.githubusercontent.com/sharktie/lg-iptv/main/webosbrew/index.json
 
 (this is just a media player i dont promote piracy)
