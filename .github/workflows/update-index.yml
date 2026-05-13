@@ -1,29 +1,22 @@
 name: Build & Release
-
 on:
   push:
     branches: [main]
-
 # Prevent overlapping runs if pushes happen quickly
 concurrency:
   group: release
   cancel-in-progress: false
-
 permissions:
   contents: write
-
 jobs:
   release:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-  
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-
       # Bump patch version in appinfo
       - name: Bump version
         id: version
@@ -33,7 +26,6 @@ jobs:
           IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
           PATCH=$((PATCH + 1))
           NEW_VERSION="$MAJOR.$MINOR.$PATCH"
-
           # Update appinfo.json in place
           node -e "
             const fs = require('fs');
@@ -41,24 +33,18 @@ jobs:
             info.version = '$NEW_VERSION';
             fs.writeFileSync('appinfo.json', JSON.stringify(info, null, 2) + '\n');
           "
-
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "Bumped $CURRENT → $NEW_VERSION"
-
-      # Install ares-cli and package the IPK 
+      # Install ares-cli and package the IPK
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-
       - name: Install ares-cli
         run: npm install -g @webos-tools/cli
-
       - name: Package IPK
         run: |
-          # ares-package outputs to current directory; point it at repo root
           ares-package --no-minify . --outdir ./dist
-          
 
       # Compute SHA256 and generate manifest.json
       - name: Generate manifest.json
@@ -67,10 +53,7 @@ jobs:
           IPK_FILE="dist/com.sharktie.iptv_${VERSION}_all.ipk"
           SHA256=$(sha256sum "$IPK_FILE" | awk '{print $1}')
           REPO="${{ github.repository }}"
-
-          # The IPK will be attached to the GitHub Release, so the URL is predictable
           IPK_URL="https://github.com/${REPO}/releases/download/v${VERSION}/com.sharktie.iptv_${VERSION}_all.ipk"
-
           node -e "
             const fs = require('fs');
             const manifest = {
@@ -90,8 +73,7 @@ jobs:
             console.log('manifest.json written');
             console.log(manifest);
           "
-
-      #  Commit appinfo.json + manifest.json back to main 
+      # Commit appinfo.json + manifest.json back to main
       - name: Commit version bump
         run: |
           VERSION=${{ steps.version.outputs.version }}
@@ -100,13 +82,14 @@ jobs:
           git add appinfo.json manifest.json
           git commit -m "chore: bump version to $VERSION [skip ci]"
           git push
-
-      # Create GitHub Release and upload the IPK
+      # Create GitHub Release and upload the IPK and manifest.json
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: v${{ steps.version.outputs.version }}
           body: "Automated release from commit ${{ github.sha }}"
-          files: dist/com.sharktie.iptv_${{ steps.version.outputs.version }}_all.ipk
+          files: |
+            dist/com.sharktie.iptv_${{ steps.version.outputs.version }}_all.ipk
+            manifest.json
           make_latest: true
