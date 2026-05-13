@@ -837,7 +837,7 @@ async function checkForUpdates() {
 
         if (compareVersions(remoteManifest.version, currentVersion) > 0) {
             console.log('Update available:', remoteManifest.version);
-            await installUpdate(remoteManifest.ipk_url);
+            await installUpdate(remoteManifest.ipkUrl);
         } else {
             console.log('App is up to date');
         }
