@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "ipkUrl": "https://github.com/sharktie/lg-iptv/releases/download/v1.0.0/com.sharktie.iptv_1.0.0_all.ipk",
   "ipkHash": {
-    "sha256": "YOUR_SHA256_HASH_HERE"
+    "sha256": "sha256:5f174838e714623b27e5b414cfc5dfbfa8a410ae720658e26bc43559a60f7140"
   },
   "iconUri": "https://raw.githubusercontent.com/sharktie/lg-iptv/main/icon.png",
   "sourceUrl": "https://github.com/sharktie/lg-iptv",
