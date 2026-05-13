@@ -603,3 +603,67 @@ html, body {
     outline: 3px solid var(--gold) !important;
     outline-offset: 2px !important;
 }
+
+/* ── Auto-updater modal ────────────────────────────────────────────────────── */
+.update-modal-box {
+    text-align: center;
+    max-width: 460px;
+}
+.update-modal-icon {
+    font-size: 48px;
+    margin-bottom: 10px;
+}
+.update-modal-versions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    margin: 10px 0 16px;
+    font-size: 18px;
+    font-weight: 700;
+}
+.update-ver-old   { color: var(--text-dim); }
+.update-ver-arrow { color: var(--accent); font-size: 22px; }
+.update-ver-new   { color: #44cc77; }
+.update-modal-desc {
+    font-size: 15px;
+    color: var(--text-dim);
+    line-height: 1.6;
+    margin-bottom: 22px;
+}
+.update-modal-btns {
+    justify-content: center;
+    gap: 14px;
+}
+.update-modal-btns .modal-btn {
+    min-width: 130px;
+}
+.update-progress {
+    margin-top: 18px;
+}
+.update-progress-bar {
+    height: 6px;
+    background: var(--bg5);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+.update-progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 4px;
+    width: 0%;
+    transition: width 0.4s ease;
+}
+.update-progress-msg {
+    font-size: 14px;
+    color: var(--text-dim);
+    text-align: center;
+}
+.update-error-msg {
+    margin-top: 14px;
+    font-size: 14px;
+    color: #ff5555;
+    text-align: center;
+    line-height: 1.5;
+}

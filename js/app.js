@@ -833,57 +833,168 @@ function calcProgress(start, end) {
     catch { return 0; }
 }
 
-async function checkForUpdates() {
-    try {
-        const localResponse = await fetch('../appinfo.json');
-        const localManifest = await localResponse.json();
-        const currentVersion = localManifest.version;
+// ── Auto-updater ─────────────────────────────────────────────────────────────
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-        const remoteResponse = await fetch('https://github.com/sharktie/lg-iptv/releases/latest/download/manifest.json', { signal: controller.signal });
-        clearTimeout(timeoutId);
-        const remoteManifest = await remoteResponse.json();
-
-        if (compareVersions(remoteManifest.version, currentVersion) > 0) {
-            console.log('Update available:', remoteManifest.version);
-            await installUpdate(remoteManifest.ipkUrl);
-        } else {
-            console.log('App is up to date');
-        }
-    } catch (e) {
-        console.log('Update check failed:', e);
-    }
-}
+const MANIFEST_URL = "https://raw.githubusercontent.com/sharktie/lg-iptv/main/manifest.json";
 
 function compareVersions(v1, v2) {
-    const parts1 = v1.split('.').map(Number);
-    const parts2 = v2.split('.').map(Number);
-    for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
-        const part1 = parts1[i] || 0;
-        const part2 = parts2[i] || 0;
-        if (part1 > part2) return 1;
-        if (part1 < part2) return -1;
+    const a = String(v1).split(".").map(Number);
+    const b = String(v2).split(".").map(Number);
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        const diff = (a[i] || 0) - (b[i] || 0);
+        if (diff !== 0) return diff > 0 ? 1 : -1;
     }
     return 0;
 }
 
-async function installUpdate(ipkUrl) {
+async function fetchWithTimeout(url, timeoutMs = 12000) {
+    const ctrl = new AbortController();
+    const tid  = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+        const res = await fetch(url, { signal: ctrl.signal });
+        clearTimeout(tid);
+        return res;
+    } catch (err) {
+        clearTimeout(tid);
+        throw err;
+    }
+}
+
+async function checkForUpdates() {
+    try {
+        // Read the version baked into the installed app
+        const localRes = await fetchWithTimeout("./appinfo.json");
+        if (!localRes.ok) throw new Error("Could not read appinfo.json");
+        const localInfo     = await localRes.json();
+        const currentVersion = localInfo.version;
+
+        // Fetch the manifest that the CI workflow commits to main
+        const remoteRes = await fetchWithTimeout(MANIFEST_URL);
+        if (!remoteRes.ok) throw new Error(`Manifest fetch failed: HTTP ${remoteRes.status}`);
+        const manifest = await remoteRes.json();
+
+        console.log(`[updater] installed=${currentVersion}  remote=${manifest.version}`);
+
+        if (compareVersions(manifest.version, currentVersion) > 0) {
+            showUpdatePrompt(currentVersion, manifest.version, manifest.ipkUrl);
+        }
+    } catch (err) {
+        // Silent — update check is best-effort, never crash the app
+        console.warn("[updater] check failed:", err.message || err);
+    }
+}
+
+function showUpdatePrompt(currentVersion, newVersion, ipkUrl) {
+    // Build a dedicated confirm modal — does not reuse showInputModal
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.id = "update-modal";
+
+    overlay.innerHTML = `
+        <div class="modal-box update-modal-box">
+            <div class="update-modal-icon">📺</div>
+            <div class="modal-heading">Update Available</div>
+            <div class="update-modal-versions">
+                <span class="update-ver-old">v${currentVersion}</span>
+                <span class="update-ver-arrow">→</span>
+                <span class="update-ver-new">v${newVersion}</span>
+            </div>
+            <p class="update-modal-desc">A new version of LiveTV is ready to install. The app will restart automatically after updating.</p>
+            <div class="modal-btns update-modal-btns">
+                <button class="modal-btn" id="update-later-btn">Later</button>
+                <button class="modal-btn modal-btn-ok" id="update-now-btn">⬇ Update Now</button>
+            </div>
+            <div id="update-progress" class="update-progress" style="display:none">
+                <div class="update-progress-bar"><div class="update-progress-fill" id="update-progress-fill"></div></div>
+                <div class="update-progress-msg" id="update-progress-msg">Installing…</div>
+            </div>
+        </div>`;
+
+    document.body.appendChild(overlay);
+
+    const laterBtn    = overlay.querySelector("#update-later-btn");
+    const nowBtn      = overlay.querySelector("#update-now-btn");
+    const progressBox = overlay.querySelector("#update-progress");
+
+    laterBtn.addEventListener("click", () => overlay.remove());
+
+    nowBtn.addEventListener("click", () => {
+        // Switch to progress UI
+        laterBtn.disabled = true;
+        nowBtn.disabled   = true;
+        nowBtn.textContent = "Installing…";
+        progressBox.style.display = "block";
+        setUpdateProgress(10, "Downloading update…");
+
+        installUpdate(ipkUrl, (pct, msg) => setUpdateProgress(pct, msg))
+            .then(() => {
+                setUpdateProgress(100, "Install complete — restarting…");
+                setTimeout(() => {
+                    // webOS close / relaunch
+                    try { webOS.platformBack(); } catch (_) {}
+                    try { window.close(); } catch (_) {}
+                }, 2000);
+            })
+            .catch(err => {
+                console.error("[updater] install failed:", err);
+                setUpdateProgress(0, "");
+                progressBox.style.display = "none";
+                laterBtn.disabled = false;
+                nowBtn.disabled   = false;
+                nowBtn.textContent = "⬇ Update Now";
+                showUpdateError(overlay, err);
+            });
+    });
+
+    // D-pad: focus the Update Now button by default
+    if (_tvUsingKeyboard) {
+        setTimeout(() => nowBtn.classList.add("tv-focus-visible"), 50);
+    }
+}
+
+function setUpdateProgress(pct, msg) {
+    const fill = document.getElementById("update-progress-fill");
+    const text = document.getElementById("update-progress-msg");
+    if (fill) fill.style.width = pct + "%";
+    if (text) text.textContent = msg;
+}
+
+function showUpdateError(overlay, err) {
+    let errBox = overlay.querySelector(".update-error-msg");
+    if (!errBox) {
+        errBox = document.createElement("div");
+        errBox.className = "update-error-msg";
+        overlay.querySelector(".update-modal-box").appendChild(errBox);
+    }
+    errBox.textContent = "Install failed: " + (err?.message || String(err));
+}
+
+function installUpdate(ipkUrl, onProgress) {
     return new Promise((resolve, reject) => {
+        if (typeof webOS === "undefined" || !webOS.service) {
+            reject(new Error("webOS service not available — are you running on a real LG TV?"));
+            return;
+        }
+
+        onProgress && onProgress(30, "Requesting install service…");
+
         webOS.service.request("luna://com.webos.appInstallService/dev/install", {
             method: "install",
-            parameters: { ipkUrl: ipkUrl },
+            parameters: { id: "com.sharktie.iptv", ipkUrl: ipkUrl },
             onSuccess: function (res) {
-                console.log('Install success:', res);
+                console.log("[updater] install success:", res);
+                onProgress && onProgress(90, "Finalising…");
                 resolve(res);
             },
             onFailure: function (err) {
-                console.log('Install failed:', err);
-                reject(err);
+                console.error("[updater] install failure:", err);
+                reject(new Error(err?.errorText || err?.errorCode || JSON.stringify(err)));
             }
         });
     });
 }
+
+// ── End auto-updater ──────────────────────────────────────────────────────────
 
 
 window.onload = function () {
