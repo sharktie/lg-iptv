@@ -58,9 +58,7 @@ jobs:
         run: |
           # ares-package outputs to current directory; point it at repo root
           ares-package --no-minify . --outdir ./dist
-          # Rename to a predictable filename
-          VERSION=${{ steps.version.outputs.version }}
-          mv dist/*.ipk dist/com.sharktie.iptv_${VERSION}_all.ipk
+          
 
       # Compute SHA256 and generate manifest.json
       - name: Generate manifest.json
