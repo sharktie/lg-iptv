@@ -1,59 +1,114 @@
-name: Update Homebrew Index
+name: Build & Release
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
+
+# Prevent overlapping runs if pushes happen quickly
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
-  update-index:
+  release:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout
         uses: actions/checkout@v4
+        with:
+  
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get IPK asset URL
-        id: asset
+      # Bump patch version in appinfo
+      - name: Bump version
+        id: version
         run: |
-          URL=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ github.event.release.tag_name }} \
-          | jq -r '.assets[] | select(.name | endswith(".ipk")) | .browser_download_url')
+          CURRENT=$(node -p "require('./appinfo.json').version")
+          # Split into parts and increment patch
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          PATCH=$((PATCH + 1))
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
 
-          echo "ASSET_URL=$URL" >> $GITHUB_ENV
+          # Update appinfo.json in place
+          node -e "
+            const fs = require('fs');
+            const info = JSON.parse(fs.readFileSync('appinfo.json', 'utf8'));
+            info.version = '$NEW_VERSION';
+            fs.writeFileSync('appinfo.json', JSON.stringify(info, null, 2) + '\n');
+          "
 
-      - name: Validate asset
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "Bumped $CURRENT → $NEW_VERSION"
+
+      # Install ares-cli and package the IPK 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install ares-cli
+        run: npm install -g @webos-tools/cli
+
+      - name: Package IPK
         run: |
-          if [ -z "$ASSET_URL" ]; then
-            echo "ERROR: No .ipk asset found"
-            exit 1
-          fi
+          # ares-package outputs to current directory; point it at repo root
+          ares-package . --outdir ./dist
+          # Rename to a predictable filename
+          VERSION=${{ steps.version.outputs.version }}
+          mv dist/*.ipk dist/com.sharktie.iptv_${VERSION}_all.ipk
 
-      - name: Build index.json
+      # Compute SHA256 and generate manifest.json
+      - name: Generate manifest.json
         run: |
-          cat > index.json <<EOF
-{
-  "id": "lg-iptv",
-  "title": "Sharktie IPTV Repo",
-  "apps": [
-    {
-      "id": "lgiptv",
-      "title": "LG IPTV Player",
-      "version": "${{ github.event.release.tag_name }}",
-      "type": "web",
-      "location": "$ASSET_URL",
-      "icon": "https://raw.githubusercontent.com/sharktie/lg-iptv/main/lg-iptv/icon.png",
-      "changelog": "Auto-updated from release"
-    }
-  ]
-}
-EOF
+          VERSION=${{ steps.version.outputs.version }}
+          IPK_FILE="dist/com.sharktie.iptv_${VERSION}_all.ipk"
+          SHA256=$(sha256sum "$IPK_FILE" | awk '{print $1}')
+          REPO="${{ github.repository }}"
 
-      - name: Commit changes
+          # The IPK will be attached to the GitHub Release, so the URL is predictable
+          IPK_URL="https://github.com/${REPO}/releases/download/v${VERSION}/com.sharktie.iptv_${VERSION}_all.ipk"
+
+          node -e "
+            const fs = require('fs');
+            const manifest = {
+              id: 'com.sharktie.iptv',
+              title: 'IPTV Player',
+              version: '$VERSION',
+              appDescription: 'Free and efficient IPTV app for LG TVs',
+              iconUri: 'https://raw.githubusercontent.com/${REPO}/main/icon.png',
+              sourceUrl: 'https://github.com/${REPO}',
+              rootRequired: false,
+              ipkUrl: '$IPK_URL',
+              ipkHash: {
+                sha256: '$SHA256'
+              }
+            };
+            fs.writeFileSync('manifest.json', JSON.stringify(manifest, null, 2) + '\n');
+            console.log('manifest.json written');
+            console.log(manifest);
+          "
+
+      #  Commit appinfo.json + manifest.json back to main 
+      - name: Commit version bump
         run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git add index.json
-          git commit -m "Auto update index.json ${{ github.event.release.tag_name }}" || exit 0
+          VERSION=${{ steps.version.outputs.version }}
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add appinfo.json manifest.json
+          git commit -m "chore: bump version to $VERSION [skip ci]"
           git push
+
+      # Create GitHub Release and upload the IPK
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          body: "Automated release from commit ${{ github.sha }}"
+          files: dist/com.sharktie.iptv_${{ steps.version.outputs.version }}_all.ipk
+          make_latest: true
