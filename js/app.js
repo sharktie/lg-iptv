@@ -333,7 +333,7 @@ function _buildRow(ch, sid) {
     // fullscreen toggle when the same channel is already selected.
     row.addEventListener("click", () => selectChannel(ch));
 
-    return { row, epgStrip, favBtn, assignBtn, reorder };
+    return { row, epgStrip, favBtn, assignBtn, reorder, upBtn, dnBtn };
 }
 
 
@@ -776,7 +776,7 @@ async function selectChannel(ch) {
     document.querySelectorAll(".tl-row").forEach(r => r.classList.toggle("selected", r.dataset.sid === String(ch.stream_id)));
     document.getElementById("preview-channel-name").textContent = ch.name || "Unknown";
     document.getElementById("pip-channel-name").textContent     = ch.name || "Unknown";
-    player.play(xtreamBuildLiveURL(cfg, ch.stream_id));
+    player.play(xtreamBuildLiveURL(cfg, ch.stream_id), ch);
     setEPG("now", "Loading…", "", ""); setEPG("next", "—", "", "");
     document.getElementById("epg-bar-fill").style.width = "0%";
     showPreviewInfo();
@@ -831,7 +831,8 @@ function calcProgress(start, end) {
 
 // ── Auto-updater ─────────────────────────────────────────────────────────────
 
-const MANIFEST_URL = "https://raw.githubusercontent.com/sharktie/lg-iptv/main/manifest.json";
+const MANIFEST_URL = "https://github.com/sharktie/lg-iptv/releases/latest/download/manifest.json";
+const MANIFEST_FALLBACK_URL = "https://raw.githubusercontent.com/sharktie/lg-iptv/main/manifest.json";
 
 function compareVersions(v1, v2) {
     const a = String(v1).split(".").map(Number);
@@ -843,11 +844,11 @@ function compareVersions(v1, v2) {
     return 0;
 }
 
-async function fetchWithTimeout(url, timeoutMs = 12000) {
+async function fetchWithTimeout(url, timeoutMs = 12000, init = {}) {
     const ctrl = new AbortController();
     const tid  = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
-        const res = await fetch(url, { signal: ctrl.signal });
+        const res = await fetch(url, { signal: ctrl.signal, cache: "no-store", ...init });
         clearTimeout(tid);
         return res;
     } catch (err) {
@@ -856,27 +857,37 @@ async function fetchWithTimeout(url, timeoutMs = 12000) {
     }
 }
 
+async function fetchRemoteManifest() {
+    const url = `${MANIFEST_URL}?t=${Date.now()}`;
+    try {
+        const res = await fetchWithTimeout(url);
+        if (!res.ok) throw new Error(`Manifest fetch failed: HTTP ${res.status}`);
+        return await res.json();
+    } catch (_) {
+        // primary manifest fetch failed, fall back silently
+    }
+
+    const fallbackUrl = `${MANIFEST_FALLBACK_URL}?t=${Date.now()}`;
+    const res = await fetchWithTimeout(fallbackUrl);
+    if (!res.ok) throw new Error(`Fallback manifest fetch failed: HTTP ${res.status}`);
+    return await res.json();
+}
+
 async function checkForUpdates() {
     try {
-        // Read the version baked into the installed app
         const localRes = await fetchWithTimeout("./appinfo.json");
         if (!localRes.ok) throw new Error("Could not read appinfo.json");
-        const localInfo     = await localRes.json();
+        const localInfo = await localRes.json();
         const currentVersion = localInfo.version;
 
-        // Fetch the manifest that the CI workflow commits to main
-        const remoteRes = await fetchWithTimeout(MANIFEST_URL);
-        if (!remoteRes.ok) throw new Error(`Manifest fetch failed: HTTP ${remoteRes.status}`);
-        const manifest = await remoteRes.json();
-
-        console.log(`[updater] installed=${currentVersion}  remote=${manifest.version}`);
+        const manifest = await fetchRemoteManifest();
+        if (!manifest?.version) throw new Error("Invalid update manifest");
 
         if (compareVersions(manifest.version, currentVersion) > 0) {
-            showUpdatePrompt(currentVersion, manifest.version, manifest.ipkUrl);
+            showUpdatePrompt(currentVersion, manifest.version, manifest.ipkUrl || manifest.ipk_url);
         }
-    } catch (err) {
-        // Silent — update check is best-effort, never crash the app
-        console.warn("[updater] check failed:", err.message || err);
+    } catch (_) {
+        // update check failed silently
     }
 }
 
@@ -932,7 +943,6 @@ function showUpdatePrompt(currentVersion, newVersion, ipkUrl) {
                 }, 2000);
             })
             .catch(err => {
-                console.error("[updater] install failed:", err);
                 setUpdateProgress(0, "");
                 progressBox.style.display = "none";
                 laterBtn.disabled = false;
@@ -978,12 +988,10 @@ function installUpdate(ipkUrl, onProgress) {
             method: "install",
             parameters: { id: "com.sharktie.iptv", ipkUrl: ipkUrl },
             onSuccess: function (res) {
-                console.log("[updater] install success:", res);
                 onProgress && onProgress(90, "Finalising…");
                 resolve(res);
             },
             onFailure: function (err) {
-                console.error("[updater] install failure:", err);
                 reject(new Error(err?.errorText || err?.errorCode || JSON.stringify(err)));
             }
         });
@@ -1351,7 +1359,9 @@ function onTVKeyDown(e) {
         e.preventDefault();
         if (isFs) { showOSD(); return; }
         if (tvFocusZone === "channel-list") {
-            if (tvRowSubZone === "assign") { tvRowSubZone = "fav"; tvFocusRowButtons(); }
+            if (tvRowSubZone === "assign") { tvRowSubZone = "reorder-down"; tvFocusRowButtons(); }
+            else if (tvRowSubZone === "reorder-down") { tvRowSubZone = "reorder-up"; tvFocusRowButtons(); }
+            else if (tvRowSubZone === "reorder-up") { tvRowSubZone = "fav"; tvFocusRowButtons(); }
             else if (tvRowSubZone === "fav") { tvRowSubZone = "row"; tvFocusRow(tvRowIndex); }
             else { setTVZone("sidebar-cats"); }
         } else if (tvFocusZone === "tl-nav") {
@@ -1374,6 +1384,14 @@ function onTVKeyDown(e) {
             if (tvRowSubZone === "row") {
                 tvRowSubZone = "fav"; tvFocusRowButtons();
             } else if (tvRowSubZone === "fav") {
+                if (entry?.reorder?.style.display !== "none") {
+                    tvRowSubZone = "reorder-up"; tvFocusRowButtons();
+                } else if (entry?.assignBtn && entry.assignBtn.style.display !== "none") {
+                    tvRowSubZone = "assign"; tvFocusRowButtons();
+                } else { setTVZone("tl-nav"); }
+            } else if (tvRowSubZone === "reorder-up") {
+                tvRowSubZone = "reorder-down"; tvFocusRowButtons();
+            } else if (tvRowSubZone === "reorder-down") {
                 if (entry?.assignBtn && entry.assignBtn.style.display !== "none") {
                     tvRowSubZone = "assign"; tvFocusRowButtons();
                 } else { setTVZone("tl-nav"); }
@@ -1693,12 +1711,19 @@ function tvFocusRowButtons() {
     if (!entry) return;
     scrollTVRowIntoView(tvRowIndex);
     requestAnimationFrame(() => {
+        const focusRow = () => entry.row.classList.add("tv-focus-visible");
         if (tvRowSubZone === "fav") {
             entry.favBtn.classList.add("tv-focus-visible");
-            entry.row.classList.add("tv-focus-visible");
+            focusRow();
+        } else if (tvRowSubZone === "reorder-up" && entry.upBtn) {
+            entry.upBtn.classList.add("tv-focus-visible");
+            focusRow();
+        } else if (tvRowSubZone === "reorder-down" && entry.dnBtn) {
+            entry.dnBtn.classList.add("tv-focus-visible");
+            focusRow();
         } else if (tvRowSubZone === "assign" && entry.assignBtn.style.display !== "none") {
             entry.assignBtn.classList.add("tv-focus-visible");
-            entry.row.classList.add("tv-focus-visible");
+            focusRow();
         }
     });
 }

@@ -1,10 +1,10 @@
 class IPTVPlayer {
     constructor() {
         this.video     = document.getElementById("player");
-        this.hls       = null;
         this._pipWrap  = document.getElementById("pip-wrap");
         this._fsActive = false;
         this._epgData  = null;
+        this._loadTimeout = null;
         this._buildFSOverlay();
         this._bindEvents();
     }
@@ -38,9 +38,20 @@ class IPTVPlayer {
 
     // ── Events ────────────────────────────────────────────────────────────────
     _bindEvents() {
-        this.video.addEventListener("waiting", () => this._msg("Buffering…"));
+        this.video.addEventListener("waiting", () => {
+            if (!this.video.paused && !this.video.ended) this._msg("Buffering…");
+        });
+        this.video.addEventListener("stalled", () => {
+            if (!this.video.paused && !this.video.ended) this._msg("Buffering…");
+        });
         this.video.addEventListener("playing", () => this._hideMsg());
-        this.video.addEventListener("stalled", () => this._msg("Buffering…"));
+        this.video.addEventListener("canplay", () => this._hideMsg());
+        this.video.addEventListener("canplaythrough", () => this._hideMsg());
+        this.video.addEventListener("progress", () => {
+            if (!this.video.paused && this.video.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA) {
+                this._hideMsg();
+            }
+        });
 
         document.addEventListener("fullscreenchange",       () => this._onFSChange());
         document.addEventListener("webkitfullscreenchange", () => this._onFSChange());
@@ -106,7 +117,10 @@ class IPTVPlayer {
     // ── UI messages ───────────────────────────────────────────────────────────
     _msg(text) {
         const el = document.getElementById("player-msg");
-        if (el) { el.textContent = text; el.style.display = "flex"; }
+        if (el) {
+            el.textContent = text;
+            el.style.display = "flex";
+        }
     }
 
     _hideMsg() {
@@ -114,71 +128,143 @@ class IPTVPlayer {
         if (el) el.style.display = "none";
     }
 
-    // ── Teardown ──────────────────────────────────────────────────────────────
-    _destroy() {
-        if (this.hls) { this.hls.destroy(); this.hls = null; }
-        this.video.pause();
-        this.video.removeAttribute("src");
-        // Do NOT call video.load() — with no src it fires a spurious async error
-        // on webOS that gets caught by the next play attempt's error handler.
+    // ── Playback ──────────────────────────────────────────────────────────────
+    destroyHls() {
+        if (this.hls) {
+            try { this.hls.destroy(); } catch (_) {}
+            this.hls = null;
+        }
+        if (this._loadTimeout) {
+            clearTimeout(this._loadTimeout);
+            this._loadTimeout = null;
+        }
     }
 
-    // ── Playback ──────────────────────────────────────────────────────────────
     play(url) {
         if (!url) return;
-        this._destroy();
+
+        if (this._loadTimeout) {
+            clearTimeout(this._loadTimeout);
+            this._loadTimeout = null;
+        }
+
+        this.destroyHls();
+        this.video.pause();
+        this.video.removeAttribute("src");
+        this.video.removeAttribute("type");
+        this.video.innerHTML = "";
+        this.video.style.display = "block";
+
         this._msg("Loading…");
 
-        // Try the webOS native player first — it handles HDR, Dolby Vision,
-        // H.265, AC3 and everything else the TV supports natively.
-        // If it fires an error, fall back to hls.js.
-        this.video.src = url;
-        this.video.load();
+        const cleanup = (handlers = []) => {
+            handlers.forEach(({ event, listener }) => {
+                this.video.removeEventListener(event, listener);
+            });
+            if (this._loadTimeout) {
+                clearTimeout(this._loadTimeout);
+                this._loadTimeout = null;
+            }
+        };
 
         const onError = () => {
-            console.log("[player] Native failed (code " + this.video.error?.code + ") — trying hls.js");
-            // Clear src before switching so no second spurious error fires.
-            this.video.removeAttribute("src");
-            this._playHLS(url);
+            cleanup([{ event: "playing", listener: onPlaying }, { event: "error", listener: onError }]);
+            if (typeof Hls !== "undefined" && Hls.isSupported() && url.includes(".m3u8")) {
+                this.attachHls(url);
+            } else {
+                this._msg("Stream appears empty — provider or stream issue");
+            }
+        };
+
+        const onPlaying = () => {
+            cleanup([{ event: "playing", listener: onPlaying }, { event: "error", listener: onError }]);
+            this._hideMsg();
         };
 
         this.video.addEventListener("error", onError, { once: true });
+        this.video.addEventListener("playing", onPlaying, { once: true });
 
-        // Cancel the error handler the moment native playback succeeds.
-        this.video.addEventListener("playing", () => {
-            this.video.removeEventListener("error", onError);
-        }, { once: true });
+        this._loadTimeout = setTimeout(() => {
+            cleanup([{ event: "playing", listener: onPlaying }, { event: "error", listener: onError }]);
+            if (typeof Hls !== "undefined" && Hls.isSupported() && url.includes(".m3u8")) {
+                this.attachHls(url);
+            } else {
+                this._msg("Stream appears empty — provider or stream issue");
+            }
+        }, 15000);
 
+        this.video.src = url;
+        this.video.load();
         this.video.play().catch(() => {});
     }
 
-    _playHLS(url) {
+    canPlayHlsNatively() {
+        if (!this.video || !this.video.canPlayType) return false;
+        const can = this.video.canPlayType("application/vnd.apple.mpegURL") || this.video.canPlayType("application/x-mpegURL");
+        return !!can;
+    }
+
+    attachHls(url) {
+        this.destroyHls();
+        if (typeof Hls === "undefined" || !Hls.isSupported()) {
+            this._msg("Stream appears empty — provider or stream issue");
+            return;
+        }
+
         this.hls = new Hls({
-            enableWorker:            false,
-            maxBufferLength:         10,
-            maxMaxBufferLength:      20,
-            maxBufferSize:           16 * 1000 * 1000,
-            fragLoadingMaxRetry:     3,
-            manifestLoadingMaxRetry: 3,
+            enableWorker: false,
+            xhrSetup: (xhr) => {
+                xhr.withCredentials = false;
+            }
         });
 
-        this.hls.loadSource(url);
+        this.hls.on(Hls.Events.ERROR, (event, data) => {
+            if (data.fatal) {
+                this._msg("Stream appears empty — provider or stream issue");
+                this.hls.destroy();
+            }
+        });
+
         this.hls.attachMedia(this.video);
+        this.hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+            this.hls.loadSource(url);
+            this._msg("Loading…");
+        });
 
         this.hls.on(Hls.Events.MANIFEST_PARSED, () => {
             this.video.play().catch(() => {});
         });
 
-        this.hls.on(Hls.Events.ERROR, (_, data) => {
-            if (!data.fatal) return;
-            if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-                this.hls.recoverMediaError();
-            } else {
-                this._msg("Stream error — try another channel");
-                this.hls.destroy();
-                this.hls = null;
+        const onPlaying = () => {
+            this.video.removeEventListener("playing", onPlaying);
+            this.video.removeEventListener("error", onError);
+            if (this._loadTimeout) {
+                clearTimeout(this._loadTimeout);
+                this._loadTimeout = null;
             }
-        });
+            this._hideMsg();
+        };
+
+        const onError = () => {
+            this.video.removeEventListener("playing", onPlaying);
+            this.video.removeEventListener("error", onError);
+            if (this._loadTimeout) {
+                clearTimeout(this._loadTimeout);
+                this._loadTimeout = null;
+            }
+            this._msg("Stream appears empty — provider or stream issue");
+            this.destroyHls();
+        };
+
+        this.video.addEventListener("playing", onPlaying, { once: true });
+        this.video.addEventListener("error", onError, { once: true });
+
+        this._loadTimeout = setTimeout(() => {
+            this.video.removeEventListener("playing", onPlaying);
+            this.video.removeEventListener("error", onError);
+            this._msg("Stream appears empty — provider or stream issue");
+            this.destroyHls();
+        }, 15000);
     }
 }
 
