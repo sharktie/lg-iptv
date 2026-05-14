@@ -1,6 +1,6 @@
 {
   "id": "com.sharktie.iptv",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "vendor": "sharktie",
   "type": "web",
   "main": "index.html",
