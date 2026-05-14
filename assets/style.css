@@ -18,7 +18,7 @@
     --pip-h:      281px;
     --logo-w:     68px;
     --name-w:     210px;
-    --row-h:      74px;
+    --row-h:      66px;
     --radius:     8px;
     --border:     1px solid #22222a;
     
@@ -33,7 +33,7 @@ html, body {
 }
 
 
-.tv-focus-visible { outline: 3px solid var(--accent) !important; outline-offset: 2px !important; }
+
 
 *:focus:not(:focus-visible) { outline: none; }
 *:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
@@ -105,8 +105,7 @@ html, body {
     padding: 12px 16px;
     height: calc(var(--pip-h) + 24px);
     overflow: hidden;
-    -webkit-transform: translateZ(0);
-    transform: translateZ(0);
+    will-change: opacity;
 }
 
 #preview-info {
@@ -249,7 +248,6 @@ html, body {
 #main {
     flex: 1; display: flex; flex-direction: column; overflow: hidden;
     background: var(--bg); min-width: 0;
-    contain: layout;
 }
 
 
@@ -261,7 +259,7 @@ html, body {
 #tl-nav {
     display: flex; align-items: center; gap: 8px; padding: 0 12px;
     border-right: var(--border); flex-shrink: 0;
-    width: calc(var(--logo-w) + var(--name-w) + 16px);
+    width: 320px;
 }
 .tl-nav-btn {
     background: var(--bg4); border: var(--border); border-radius: 6px;
@@ -298,112 +296,167 @@ html, body {
 .no-results { text-align: center; color: var(--text-dim); padding: 40px 0; font-size: 18px; }
 
 
+/* ── Channel row — columnar layout ────────────────────────────────────────── */
 .tl-row {
     display: flex; align-items: stretch;
     height: var(--row-h); border-bottom: var(--border); cursor: pointer;
     left: 0; right: 0;
     contain: layout style;
-    transition: background 0.1s;
+    transition: background 0.12s;
+    border-radius: 0;
 }
-.tl-row:hover             { background: var(--bg2); }
-.tl-row.selected          { background: #160a0c; }
+.tl-row:hover             { background: var(--bg3); }
+.tl-row.selected          { background: rgba(229,0,30,0.07); }
 .tl-row.selected .ch-name { color: var(--accent); }
+.tl-row.tv-focus-visible  { outline: none !important; background: var(--bg3); z-index: 5; }
+.tl-row:focus             { outline: none !important; }
+.tl-row:focus-visible     { outline: none !important; }
 
-.tl-row.tv-focus-visible  {
-    outline: 3px solid var(--accent);
-    outline-offset: -3px;
-    background: var(--bg3);
-    z-index: 5;
+/* Only col1 gets the red focus outline when navigating rows */
+.tl-col1.tv-focus-visible {
+    outline: 3px solid var(--accent) !important;
+    outline-offset: -3px !important;
+}
+
+/* Col 1: logo + name + EPG — takes up all available space */
+.tl-col1 {
+    flex: 1; display: flex; align-items: stretch; min-width: 0;
+    overflow: hidden; cursor: pointer;
 }
 
 .tl-logo-cell {
-    width: var(--logo-w); flex-shrink: 0;
+    width: 58px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
-    border-right: var(--border); background: var(--bg2); padding: 8px;
+    padding: 0 6px;
 }
-.tl-row.selected .tl-logo-cell { background: #160a0c; }
-
-.ch-logo-static  { width: 50px; height: 50px; object-fit: contain; display: block; border-radius: 5px; }
+.ch-logo-static  {
+    width: 42px; height: 42px; object-fit: contain; display: block;
+    border-radius: 8px;
+}
 .ch-logo-fallback {
-    width: 50px; height: 50px; display: flex; align-items: center; justify-content: center;
-    font-size: 20px; font-weight: 700; color: var(--accent); background: var(--bg4); border-radius: 5px;
+    width: 42px; height: 42px; display: flex; align-items: center; justify-content: center;
+    font-size: 17px; font-weight: 700; color: var(--accent);
+    background: var(--bg4); border-radius: 8px;
+    border: 1px solid var(--bg5);
 }
 
-.tl-name-cell {
-    width: var(--name-w); flex-shrink: 0;
-    display: flex; align-items: center; padding: 0 12px;
-    border-right: var(--border); background: var(--bg2); overflow: hidden;
+.tl-name-epg-wrap {
+    flex: 1; display: flex; flex-direction: column; justify-content: center;
+    padding: 0 10px 0 4px; min-width: 0; gap: 2px; overflow: hidden;
 }
-.tl-row.selected .tl-name-cell { background: #160a0c; }
 .ch-name {
-    font-size: 16px; font-weight: 600; color: var(--text);
+    font-size: 15px; font-weight: 600; color: var(--text);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    line-height: 1.2; flex-shrink: 0;
 }
-
 .tl-epg-strip {
-    flex: 1; position: relative; overflow: hidden; min-width: 0;
+    flex: 1; position: relative; overflow: hidden;
+    min-height: 20px; width: 100%;
     display: flex; align-items: center;
     contain: layout style;
 }
 
 .tl-epg-block {
-    position: absolute; top: 5px; bottom: 5px; border-radius: 5px;
+    position: absolute; top: 2px; bottom: 2px; border-radius: 5px;
     background: var(--bg3); border: 1px solid var(--bg5); overflow: hidden;
     display: flex; flex-direction: column; justify-content: center;
-    padding: 0 10px; cursor: pointer; min-width: 0;
+    padding: 0 8px; cursor: pointer; min-width: 0;
 }
 .tl-epg-block:hover        { background: var(--bg4); z-index: 2; }
 .tl-epg-block.tl-now       { background: #1a0e10; border-color: var(--accent-dim); }
 .tl-epg-block.tl-now:hover { background: #220f12; border-color: var(--accent); }
 .tl-epg-block.tl-past      { background: var(--bg2); border-color: #1c1c22; opacity: 0.55; }
 .tl-epg-block.tl-loading,
-.tl-epg-block.tl-no-epg   { background: transparent; border: none; color: var(--text-faint); font-size: 13px; cursor: default; }
+.tl-epg-block.tl-no-epg   { background: transparent; border: none; color: var(--text-faint); font-size: 12px; cursor: default; }
 
-.tl-block-time  { font-size: 12px; color: var(--text-dim); white-space: nowrap; overflow: hidden; margin-bottom: 2px; flex-shrink: 0; }
+.tl-block-time  { font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; margin-bottom: 1px; flex-shrink: 0; }
 .tl-epg-block.tl-now .tl-block-time { color: var(--accent); }
-.tl-block-title { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-block-title { font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tl-epg-block.tl-past .tl-block-title { color: var(--text-dim); }
 .tl-progress-fill {
     position: absolute; bottom: 0; left: 0; height: 3px;
     background: var(--accent); border-radius: 0 0 5px 5px; pointer-events: none;
 }
 
-
+/* Col 2: favourite button */
+.tl-col2 {
+    flex-shrink: 0; width: 52px;
+    display: flex; align-items: center; justify-content: center;
+    border-left: var(--border);
+}
 
 .fav-btn {
-    flex-shrink: 0; align-self: center;
-    background: none; border: 2px solid transparent; color: var(--text-faint);
-    font-size: 28px; cursor: pointer;
-    padding: 8px 12px; border-radius: 8px; line-height: 1;
-    min-width: 52px; min-height: 52px;
+    width: 40px; height: 40px;
+    background: none; border: 1.5px solid transparent; color: var(--text-faint);
+    font-size: 20px; cursor: pointer;
+    border-radius: 10px; line-height: 1;
     display: flex; align-items: center; justify-content: center;
-    transition: color 0.15s, background 0.15s, border-color 0.15s;
+    transition: color 0.13s, background 0.13s, border-color 0.13s;
 }
 .fav-btn:hover  { color: var(--gold); background: rgba(197,153,10,0.12); border-color: var(--gold-dim); }
 .fav-btn.active { color: var(--gold); }
-.fav-btn.tv-focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; background: rgba(197,153,10,0.15); }
+.fav-btn.tv-focus-visible {
+    outline: none;
+    border-color: var(--gold);
+    background: rgba(197,153,10,0.18);
+    color: var(--gold);
+    box-shadow: 0 0 0 2px rgba(197,153,10,0.35);
+}
 
+/* Col 3: assign (+) button — visible in fav view only */
+.tl-col3 {
+    flex-shrink: 0; width: 48px;
+    display: none; align-items: center; justify-content: center;
+    border-left: var(--border);
+}
 
 .assign-btn {
-    flex-shrink: 0; align-self: center;
-    background: none; border: 2px solid transparent;
-    font-size: 26px; font-weight: 700;
-    cursor: pointer; padding: 8px 12px; border-radius: 8px;
-    color: var(--text-faint); display: none;
-    min-width: 52px; min-height: 52px;
-    align-items: center; justify-content: center;
-    transition: color 0.15s, background 0.15s, border-color 0.15s;
+    width: 36px; height: 36px;
+    background: none; border: 1.5px solid var(--bg5);
+    font-size: 18px; font-weight: 700;
+    cursor: pointer; border-radius: 10px;
+    color: var(--text-faint);
+    display: flex; align-items: center; justify-content: center;
+    transition: color 0.13s, background 0.13s, border-color 0.13s;
 }
 .assign-btn:hover  { color: var(--text); background: var(--bg4); border-color: var(--bg5); }
 .assign-btn.active { color: var(--gold); border-color: var(--gold-dim); background: rgba(197,153,10,0.1); }
-.assign-btn.tv-focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
-
-.fav-reorder { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; align-self: center; padding-right: 8px; }
-.reorder-btn {
-    background: var(--bg4); border: var(--border); border-radius: 4px;
-    color: var(--text-dim); font-size: 13px; padding: 6px 10px; cursor: pointer; line-height: 1;
+.assign-btn.tv-focus-visible {
+    outline: none;
+    border-color: var(--gold);
+    background: rgba(197,153,10,0.15);
+    color: var(--gold);
+    box-shadow: 0 0 0 2px rgba(197,153,10,0.35);
 }
-.reorder-btn:hover, .reorder-btn.tv-focus-visible { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* Col 4: reorder — two stacked half-height buttons */
+.tl-col4 {
+    flex-shrink: 0; width: 40px;
+    display: none; align-items: stretch; justify-content: center;
+    border-left: var(--border);
+}
+
+.fav-reorder {
+    display: flex; flex-direction: column; width: 100%; gap: 0;
+}
+
+.reorder-btn {
+    flex: 1; width: 100%;
+    background: transparent; border: none; border-radius: 0;
+    color: var(--text-faint); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.12s, color 0.12s;
+}
+.reorder-btn.reorder-up {
+    border-bottom: 1px solid var(--bg4);
+    border-radius: 0;
+}
+.reorder-btn:hover { background: var(--bg4); color: var(--text); }
+.reorder-btn.tv-focus-visible {
+    outline: none;
+    background: var(--accent);
+    color: #fff;
+}
 
 
 .assign-panel {
@@ -668,4 +721,43 @@ html, body {
     color: #ff5555;
     text-align: center;
     line-height: 1.5;
+}
+
+/* ── D-pad column focus states ───────────────────────────────────────────── */
+/* Soft row highlight when a button column (not the row itself) is focused */
+.tl-row.tv-row-active {
+    background: var(--bg3);
+}
+
+/* Col2 (fav) focused — gold accent on the column */
+.tl-col2.tv-focus-visible {
+    outline: none;
+    background: rgba(197,153,10,0.13);
+    box-shadow: inset 0 0 0 2px var(--gold-dim);
+    border-radius: 0;
+}
+.tl-col2.tv-focus-visible .fav-btn {
+    color: var(--gold);
+    border-color: var(--gold);
+    background: rgba(197,153,10,0.2);
+}
+
+/* Col3 (assign) focused */
+.tl-col3.tv-focus-visible {
+    outline: none;
+    background: rgba(197,153,10,0.1);
+    box-shadow: inset 0 0 0 2px var(--gold-dim);
+    border-radius: 0;
+}
+.tl-col3.tv-focus-visible .assign-btn {
+    color: var(--gold);
+    border-color: var(--gold);
+    background: rgba(197,153,10,0.18);
+}
+
+/* Reorder half-buttons focused */
+.reorder-btn.tv-focus-visible {
+    outline: none;
+    background: var(--accent) !important;
+    color: #fff !important;
 }

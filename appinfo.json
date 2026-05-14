@@ -1,9 +1,17 @@
 {
+
   "id": "com.sharktie.iptv",
   "version": "1.0.6",
   "vendor": "sharktie",
   "type": "web",
   "main": "index.html",
   "title": "IPTV player",
-  "icon": "icon.png"
+  "icon": "icon.png",
+  "trustLevel": "trusted",
+  "allowedOrigins": [
+    "https://github.com",
+    "https://raw.githubusercontent.com",
+    "https://objects.githubusercontent.com",
+    "https://releases.githubusercontent.com"
+  ]
 }
