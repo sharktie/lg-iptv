@@ -414,8 +414,6 @@ function setupPip() {
     document.getElementById("pip-fullscreen-btn").addEventListener("click", e => { e.stopPropagation(); toggleFullscreen(); });
     document.addEventListener("fullscreenchange",       onFullscreenChange);
     document.addEventListener("webkitfullscreenchange", onFullscreenChange);
-
-    
     const osd = document.createElement("div");
     osd.id = "fs-osd";
     osd.innerHTML = `
@@ -562,8 +560,6 @@ function updateSidebarActive() {
         if (catsSection) catsSection.classList.add("open");
     }
 }
-
-function renderFavGroupBar() { renderFavSectionList(); }
 
 function renderFavSectionList() {
     const list = document.getElementById("fav-section-list");
@@ -828,7 +824,7 @@ async function selectChannel(ch) {
     document.querySelectorAll(".tl-row").forEach(r => r.classList.toggle("selected", r.dataset.sid === String(ch.stream_id)));
     document.getElementById("preview-channel-name").textContent = ch.name || "Unknown";
     document.getElementById("pip-channel-name").textContent     = ch.name || "Unknown";
-    player.play(xtreamBuildLiveURL(cfg, ch.stream_id), ch);
+    player.play(xtreamBuildLiveURL(cfg, ch.stream_id));
     setEPG("now", "Loading…", "", ""); setEPG("next", "—", "", "");
     document.getElementById("epg-bar-fill").style.width = "0%";
     showPreviewInfo();
@@ -1075,10 +1071,7 @@ window.onload = function () {
 
     setTimeout(checkForUpdates, 2000); // Check for updates 2 seconds after app init
     
-    const savedEpgUrl = load("iptv_custom_epg_url", "");
-    if (savedEpgUrl) {
-        const matchField = load("iptv_custom_epg_match", "tvg-id");
-        
+    if (load("iptv_custom_epg_url", "")) {
         setTimeout(() => mergeXMLTVIntoEpgCache(), 2000);
     }
 };
@@ -1271,8 +1264,6 @@ function mergeXMLTVIntoEpgCache() {
 
 
 
-
-let _previewHideTimer = null;
 
 function showPreviewInfo() {
     const info = document.getElementById("preview-info");

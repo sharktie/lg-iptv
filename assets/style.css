@@ -134,8 +134,8 @@ html, body {
 }
 /* No red ring on the pip — it's a video player, not a focusable button */
 #pip-wrap:hover { border-color: var(--bg5); }
-#pip-wrap:-webkit-full-screen,
-#pip-wrap:fullscreen,
+#pip-wrap:-webkit-full-screen { width: 100vw; height: 100vh; border-radius: 0; border: none; outline: none; }
+#pip-wrap:fullscreen           { width: 100vw; height: 100vh; border-radius: 0; border: none; outline: none; }
 #pip-wrap.pip-fullscreen-active { width: 100vw; height: 100vh; border-radius: 0; border: none; outline: none; }
 #player { width: 100%; height: 100%; display: block; object-fit: contain; }
 #player-msg {
@@ -219,8 +219,8 @@ html, body {
 
 .section-star  { font-size: 16px; flex-shrink: 0; }
 .section-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
-.section-chevron { flex-shrink: 0; font-size: 13px; margin-left: auto; }
-.cat-section.open .section-chevron { content: "▴"; }
+.section-chevron { flex-shrink: 0; font-size: 13px; margin-left: auto; display: inline-block; transition: transform 0.2s ease; }
+.cat-section.open .section-chevron { transform: rotate(180deg); }
 
 .cat-section-list { display: none; flex-direction: column; gap: 3px; padding-left: 14px; }
 .cat-section.open .cat-section-list { display: flex; }
@@ -548,8 +548,6 @@ html, body {
 #epg-bar      { margin-top: 10px; height: 4px; background: var(--bg5); border-radius: 3px; overflow: hidden; }
 #epg-bar-fill { height: 100%; background: var(--accent); border-radius: 3px; width: 0%; }
 
-
-#fav-group-bar { display: none !important; }
 
 
 #channel-list-wrap:focus { outline: none; }

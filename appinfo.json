@@ -7,11 +7,6 @@
   "title": "IPTV player",
   "icon": "icon.png",
   "largeIcon": "icon_large.png",
-  "trustLevel": "trusted",
-  "allowedOrigins": [
-    "https://github.com",
-    "https://raw.githubusercontent.com",
-    "https://objects.githubusercontent.com",
-    "https://releases.githubusercontent.com"
-  ]
+  "iconColor": "#000000",
+  "requiredPermissions": ["com.webos.media"]
 }

@@ -2,44 +2,14 @@ class IPTVPlayer {
     constructor() {
         this.video    = document.getElementById("player");
         this._pipWrap = document.getElementById("pip-wrap");
-        this._fsActive = false;
-        this._epgData  = null;
-        this.hls       = null;
-        this._buildFSOverlay();
+        this.hls      = null;
         this._bindEvents();
-    }
-
-    // ── Fullscreen overlay ────────────────────────────────────────────────────
-    _buildFSOverlay() {
-        const o = document.createElement("div");
-        o.id = "fs-overlay";
-        o.innerHTML =
-            '<div id="fs-channel-name"></div>' +
-            '<div id="fs-epg-wrap">' +
-                '<div id="fs-epg-now">' +
-                    '<span class="fs-badge now">NOW</span>' +
-                    '<div class="fs-epg-body">' +
-                        '<div id="fs-now-title"></div>' +
-                        '<div id="fs-now-time"></div>' +
-                        '<div id="fs-now-desc"></div>' +
-                        '<div id="fs-epg-bar"><div id="fs-epg-bar-fill"></div></div>' +
-                    '</div>' +
-                '</div>' +
-                '<div id="fs-epg-next">' +
-                    '<span class="fs-badge next">NEXT</span>' +
-                    '<div class="fs-epg-body">' +
-                        '<div id="fs-next-title"></div>' +
-                        '<div id="fs-next-time"></div>' +
-                    '</div>' +
-                '</div>' +
-            '</div>';
-        this._pipWrap.appendChild(o);
     }
 
     // ── Events ────────────────────────────────────────────────────────────────
     _bindEvents() {
-        document.addEventListener("fullscreenchange",       () => this._onFSChange());
-        document.addEventListener("webkitfullscreenchange", () => this._onFSChange());
+        // Handle keyboard input while in fullscreen.
+        // fullscreenchange is handled by app.js (onFullscreenChange / setupPip).
         document.addEventListener("keydown", (e) => this._handleKey(e), true);
     }
 
@@ -55,34 +25,15 @@ class IPTVPlayer {
         }
     }
 
-    _onFSChange() {
-        this._fsActive = !!(document.fullscreenElement || document.webkitFullscreenElement);
-        this._pipWrap.classList.toggle("fs-active", this._fsActive);
-        if (this._fsActive) this._refreshFSOverlay();
+    // ── UI messages ───────────────────────────────────────────────────────────
+    _msg(text) {
+        const el = document.getElementById("player-msg");
+        if (el) { el.textContent = text; el.style.display = "flex"; }
     }
 
-    // ── EPG overlay ───────────────────────────────────────────────────────────
-    _refreshFSOverlay() {
-        if (!this._epgData) return;
-        const d = this._epgData;
-        this._setText("fs-channel-name", d.channelName || "");
-        this._setText("fs-now-title",    d.nowTitle    || "—");
-        this._setText("fs-now-time",     d.nowTime     || "");
-        this._setText("fs-now-desc",     d.nowDesc     || "");
-        this._setText("fs-next-title",   d.nextTitle   || "—");
-        this._setText("fs-next-time",    d.nextTime    || "");
-        const fill = document.getElementById("fs-epg-bar-fill");
-        if (fill) fill.style.width = (d.progress || 0) + "%";
-    }
-
-    _setText(id, val) {
-        const el = document.getElementById(id);
-        if (el) el.textContent = val;
-    }
-
-    setEPG(data) {
-        this._epgData = data;
-        if (this._fsActive) this._refreshFSOverlay();
+    _hideMsg() {
+        const el = document.getElementById("player-msg");
+        if (el) el.style.display = "none";
     }
 
     // ── Fullscreen ────────────────────────────────────────────────────────────
@@ -97,17 +48,6 @@ class IPTVPlayer {
 
     exitFullscreen() {
         (document.exitFullscreen || document.webkitExitFullscreen || (() => {})).call(document);
-    }
-
-    // ── UI messages ───────────────────────────────────────────────────────────
-    _msg(text) {
-        const el = document.getElementById("player-msg");
-        if (el) { el.textContent = text; el.style.display = "flex"; }
-    }
-
-    _hideMsg() {
-        const el = document.getElementById("player-msg");
-        if (el) el.style.display = "none";
     }
 
     // ── Playback ──────────────────────────────────────────────────────────────
@@ -149,7 +89,6 @@ class IPTVPlayer {
             if (isHls && hlsAvailable) {
                 this._attachHls(url);
             }
-            // If no fallback available we just leave the loading message — better than a false error
         };
 
         this.video.addEventListener("playing", onPlaying, { once: true });
