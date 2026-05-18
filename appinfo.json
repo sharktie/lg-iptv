@@ -1,6 +1,6 @@
 {
   "id": "com.sharktie.iptv",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "vendor": "sharktie",
   "type": "web",
   "main": "index.html",
@@ -8,5 +8,7 @@
   "icon": "icon.png",
   "largeIcon": "icon_large.png",
   "iconColor": "#000000",
-  "requiredPermissions": ["com.webos.media"]
+  "requiredPermissions": [
+    "com.webos.media"
+  ]
 }
