@@ -1,4 +1,3 @@
-
 let cfg            = null;
 let allChannels    = [];
 let activeCategory = "favs";
@@ -15,6 +14,8 @@ let timelineOffset   = 0;
 const rowCache       = new Map();
 
 
+// ── Local storage helpers ─────────────────────────────────────────────────────
+
 function load(key, fallback) {
     try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
     catch { return fallback; }
@@ -23,6 +24,8 @@ function save(key, val) {
     try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
 }
 
+
+// ── Channel cache ─────────────────────────────────────────────────────────────
 
 const CHANNEL_CACHE_KEY = "iptv_ch_v2";
 const CAT_CACHE_KEY     = "iptv_cat_v2";
@@ -61,6 +64,8 @@ function saveChannelCache(channels, categories) {
 }
 
 
+// ── EPG disk cache ────────────────────────────────────────────────────────────
+
 const EPG_CACHE_KEY = "iptv_epg_v2";
 const EPG_TTL_MS    = 30 * 60 * 1000;
 
@@ -87,6 +92,8 @@ function scheduleEpgSave() {
 }
 
 
+// ── Favourites ────────────────────────────────────────────────────────────────
+
 function isFav(sid)    { return favourites.includes(String(sid)); }
 function toggleFav(sid) {
     sid = String(sid);
@@ -101,23 +108,20 @@ function moveFav(sid, dir) {
     save("iptv_favourites", favourites);
 }
 
-
-// Move a favourite and immediately restore D-pad focus to the same channel/subzone
 function _reorderAndRefocus(sid, dir, subzone) {
     moveFav(sid, dir);
-    // Find the new index of this channel in the refreshed list
     _keepScrollOnApply = true;
     const channels = getFilteredChannels();
     const newIdx = channels.findIndex(ch => String(ch.stream_id) === sid);
-    if (newIdx >= 0) {
-        tvRowIndex = newIdx;
-    }
-    // Re-render with scroll preserved, then restore focus
+    if (newIdx >= 0) tvRowIndex = newIdx;
     _vsSetChannels(channels, true);
     loadEPGForCurrentCategory();
     tvRowSubZone = subzone;
     tvFocusRowButtons();
 }
+
+
+// ── Favourite groups ──────────────────────────────────────────────────────────
 
 function createFavGroup(name) {
     const g = { id: "fg_" + Date.now().toString(36), name: name.trim(), channelIds: [] };
@@ -145,6 +149,8 @@ function toggleChannelInGroup(gid, sid) {
 }
 
 
+// ── App init ──────────────────────────────────────────────────────────────────
+
 async function initApp() {
     const status = document.getElementById("status");
     const setStatus = (msg, err) => {
@@ -160,7 +166,6 @@ async function initApp() {
 
     if (!cfg?.server_url) { setStatus("ERR: missing server_url", true); return; }
 
-    
     const cachedCh  = loadChannelCache();
     const cachedCat = loadCatCache();
     let categories  = cachedCat || [];
@@ -201,7 +206,7 @@ function _bootUI(categories) {
     setupSearch();
     setupPip();
     setupTimelineNav();
-    
+
     if (xmltvCache && xmltvCache.programmes) mergeXMLTVIntoEpgCache();
     activeCategory = favourites.length ? "favs" : "all";
     activeFavGroup = "all";
@@ -213,12 +218,12 @@ function _bootUI(categories) {
     updateSidebarActive();
     applyFilters();
 
-    // Start focus on the channel list so Up/Down works immediately.
-    // The user can press Left to reach the sidebar when needed.
     tvRowIndex = 0;
     setTVZone("channel-list");
 }
 
+
+// ── Virtual scroll ────────────────────────────────────────────────────────────
 
 const VS_ROW_H    = 66;
 const VS_OVERSCAN = 5;
@@ -253,12 +258,12 @@ function _vsSetChannels(channels, keepScroll) {
 }
 
 function _vsRender() {
-    const list = document.getElementById("channel-list");
+    const list     = document.getElementById("channel-list");
     const channels = _vsChannels;
     if (!channels.length) return;
 
-    const first = Math.max(0, Math.floor(_vsScrollTop / VS_ROW_H) - VS_OVERSCAN);
-    const last  = Math.min(channels.length - 1, Math.ceil((_vsScrollTop + _vsHeight) / VS_ROW_H) + VS_OVERSCAN);
+    const first    = Math.max(0, Math.floor(_vsScrollTop / VS_ROW_H) - VS_OVERSCAN);
+    const last     = Math.min(channels.length - 1, Math.ceil((_vsScrollTop + _vsHeight) / VS_ROW_H) + VS_OVERSCAN);
     const isFavView = activeCategory === "favs";
     const fragment  = document.createDocumentFragment();
     const needed    = new Set();
@@ -293,6 +298,7 @@ function _vsRender() {
 function _buildRow(ch, sid) {
     const row = document.createElement("div");
     row.className = "tl-row"; row.dataset.sid = sid;
+    row.setAttribute("tabindex", "-1");
 
     // ── Col 1: logo + name + EPG strip ───────────────────────────────────────
     const col1 = document.createElement("div");
@@ -351,7 +357,7 @@ function _buildRow(ch, sid) {
     assignBtn.addEventListener("click", e => showAssignPanel(e, sid, assignBtn));
     col3.appendChild(assignBtn);
 
-    // ── Col 4: reorder — two half-height buttons stacked ─────────────────────
+    // ── Col 4: reorder buttons ────────────────────────────────────────────────
     const col4 = document.createElement("div");
     col4.className = "tl-col4";
     const reorder = document.createElement("div");
@@ -370,23 +376,20 @@ function _buildRow(ch, sid) {
     reorder.appendChild(dnBtn);
     col4.appendChild(reorder);
 
-    row.setAttribute("tabindex", "-1");
-
     row.appendChild(col1);
     row.appendChild(col2);
     row.appendChild(col3);
     row.appendChild(col4);
 
-    // Click handler: only honour mouse clicks, not the synthetic click webOS
-    // fires when OK is pressed on a focused element.
-    col1.addEventListener("click", (e) => {
-        if (_tvUsingKeyboard) return;
-        selectChannel(ch);
-    });
+    // Magic remote pointer click selects the channel.
+    // D-pad OK is handled via onTVKeyDown in dpad.js.
+    col1.addEventListener("click", () => selectChannel(ch));
 
     return { row, epgStrip, favBtn, assignBtn, reorder, upBtn, dnBtn, col1, col2, col3, col4 };
 }
 
+
+// ── EPG loading ───────────────────────────────────────────────────────────────
 
 async function loadEPGForCurrentCategory() {
     const myKey  = ++epgLoadAbortKey;
@@ -407,6 +410,8 @@ async function loadEPGForCurrentCategory() {
     scheduleEpgSave();
 }
 
+
+// ── Fullscreen / PiP / OSD ────────────────────────────────────────────────────
 
 let _osdTimer = null;
 
@@ -439,25 +444,32 @@ function setupPip() {
 function toggleFullscreen() {
     const pip  = document.getElementById("pip-wrap");
     const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
-    if (!isFs) { const req = pip.requestFullscreen || pip.webkitRequestFullscreen; if (req) req.call(pip); }
-    else { const ex = document.exitFullscreen || document.webkitExitFullscreen; if (ex) ex.call(document); }
+    if (!isFs) {
+        const req = pip.requestFullscreen || pip.webkitRequestFullscreen;
+        if (req) req.call(pip);
+    } else {
+        const ex = document.exitFullscreen || document.webkitExitFullscreen;
+        if (ex) ex.call(document);
+    }
 }
 
 function onFullscreenChange() {
     const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
     document.getElementById("pip-fullscreen-btn").title = isFs ? "Exit fullscreen" : "Fullscreen";
     document.getElementById("pip-wrap").classList.toggle("pip-fullscreen-active", isFs);
-    if (isFs && currentChannel) showOSD();
+    if (isFs) {
+        if (currentChannel) showOSD();
+    } else {
+        setTVZone("channel-list");
+    }
 }
 
 function showOSD() {
     const osd = document.getElementById("fs-osd");
     if (!osd) return;
 
-    
     document.getElementById("fs-osd-channel").textContent = currentChannel?.name || "";
 
-    
     const listings = currentChannel ? epgCache[currentChannel.stream_id] : null;
     let nowTitle = "", nowTime = "", nextTitle = "", nextTime = "", progress = 0;
 
@@ -469,15 +481,8 @@ function showOSD() {
         });
         const cur  = listings[idx >= 0 ? idx     : 0];
         const next = listings[idx >= 0 ? idx + 1 : 1];
-        if (cur) {
-            nowTitle = xtreamDecodeEPG(cur.title);
-            nowTime  = formatTimeRange(cur.start, cur.end);
-            progress = calcProgress(cur.start, cur.end);
-        }
-        if (next) {
-            nextTitle = xtreamDecodeEPG(next.title);
-            nextTime  = formatTimeRange(next.start, next.end);
-        }
+        if (cur)  { nowTitle  = xtreamDecodeEPG(cur.title);  nowTime  = formatTimeRange(cur.start,  cur.end);  progress = calcProgress(cur.start, cur.end); }
+        if (next) { nextTitle = xtreamDecodeEPG(next.title); nextTime = formatTimeRange(next.start, next.end); }
     }
 
     document.getElementById("fs-osd-now-title").textContent  = nowTitle  || "—";
@@ -486,7 +491,6 @@ function showOSD() {
     document.getElementById("fs-osd-next-time").textContent  = nextTime  || "";
     document.getElementById("fs-osd-bar-fill").style.width   = progress + "%";
 
-    
     osd.classList.remove("osd-hidden");
     osd.classList.add("osd-visible");
     clearTimeout(_osdTimer);
@@ -496,6 +500,8 @@ function showOSD() {
     }, 4000);
 }
 
+
+// ── Categories / sidebar ──────────────────────────────────────────────────────
 
 function renderCategories(categories) {
     const container = document.getElementById("categories");
@@ -552,12 +558,10 @@ function updateSidebarActive() {
         if (hdr) hdr.classList.add("active");
         document.querySelectorAll("[data-fav-group]").forEach(btn => btn.classList.toggle("active", btn.dataset.favGroup === activeFavGroup));
     } else if (activeCategory === "all") {
-        const allBtn = document.querySelector(".cat-btn[data-cat-id='all']");
-        if (allBtn) allBtn.classList.add("active");
+        document.querySelector(".cat-btn[data-cat-id='all']")?.classList.add("active");
     } else {
         document.querySelectorAll(".cat-sub-btn[data-cat-id]").forEach(btn => btn.classList.toggle("active", btn.dataset.catId === String(activeCategory)));
-        const catsSection = document.getElementById("cat-section-cats");
-        if (catsSection) catsSection.classList.add("open");
+        document.getElementById("cat-section-cats")?.classList.add("open");
     }
 }
 
@@ -585,6 +589,9 @@ function renderFavSectionList() {
     list.appendChild(addBtn);
 }
 
+
+// ── Group context menu ────────────────────────────────────────────────────────
+
 function promptNewGroup() {
     showInputModal("New Favourite Group", "Group name", "", name => { if (!name) return; createFavGroup(name); renderFavSectionList(); });
 }
@@ -604,7 +611,6 @@ function showGroupContextMenu(e, gid) {
     mkItem("Rename", false, () => { const g = favGroups.find(x => x.id === gid); if (g) promptRenameGroup(gid, g.name); });
     mkItem("Delete Group", true, () => { if (confirm("Delete this group? Channels stay in Favourites.")) { deleteFavGroup(gid); renderFavSectionList(); applyFilters(); } });
     document.body.appendChild(menu);
-    // D-pad: auto-focus first item
     _ctxMenuIndex = 0;
     const items = Array.from(menu.querySelectorAll(".ctx-item"));
     _focusCtxItem(menu, items);
@@ -613,9 +619,13 @@ function showGroupContextMenu(e, gid) {
 function closeContextMenus() { document.querySelectorAll(".ctx-menu").forEach(m => m.remove()); }
 
 
+// ── Assign panel ──────────────────────────────────────────────────────────────
+
 function showAssignPanel(e, sid, anchorEl) {
     e.stopPropagation(); closeAssignPanels();
     if (!favGroups.length) { promptNewGroup(); return; }
+    history.pushState(null, "");
+    _assignHistoryPushed = true;
     const panel = document.createElement("div");
     panel.className = "assign-panel";
     const title = document.createElement("div"); title.className = "assign-title"; title.textContent = "Add to group";
@@ -628,20 +638,26 @@ function showAssignPanel(e, sid, anchorEl) {
         row.appendChild(cb); row.appendChild(span); panel.appendChild(row);
     });
     const newBtn = document.createElement("button"); newBtn.className = "assign-new-btn"; newBtn.textContent = "+ New Group";
-    newBtn.onclick = () => { closeAssignPanels(); promptNewGroup(); };
+    newBtn.onclick = () => { closeAssignPanels(true); promptNewGroup(); };
     panel.appendChild(newBtn);
     const rect = anchorEl.getBoundingClientRect();
     panel.style.cssText = `position:fixed;right:${window.innerWidth - rect.right}px;top:${rect.bottom + 4}px`;
     document.body.appendChild(panel);
-    // D-pad: auto-focus first item
     _assignPanelIndex = 0;
     const items = Array.from(panel.querySelectorAll(".assign-row, .assign-new-btn"));
     _focusAssignItem(panel, items);
-    // Mouse close
-    function onOutsideClick(ev) { if (!panel.contains(ev.target)) { closeAssignPanels(); document.removeEventListener("mousedown", onOutsideClick); } }
-    setTimeout(() => document.addEventListener("mousedown", onOutsideClick), 0);
 }
-function closeAssignPanels() { document.querySelectorAll(".assign-panel").forEach(p => p.remove()); }
+let _assignHistoryPushed = false;
+
+function closeAssignPanels(popHistory = false) {
+    document.querySelectorAll(".assign-panel").forEach(p => p.remove());
+    if (popHistory && _assignHistoryPushed) {
+        _assignHistoryPushed = false;
+        history.back();
+    } else {
+        _assignHistoryPushed = false;
+    }
+}
 function updateAssignBtnState(sid) {
     const entry = rowCache.get(String(sid));
     if (!entry?.assignBtn) return;
@@ -649,22 +665,28 @@ function updateAssignBtnState(sid) {
 }
 
 
+// ── Input modal ───────────────────────────────────────────────────────────────
+
 function showInputModal(heading, label, value, callback) {
     const overlay = document.createElement("div"); overlay.className = "modal-overlay";
-    const box = document.createElement("div"); box.className = "modal-box";
-    const h = document.createElement("div"); h.className = "modal-heading"; h.textContent = heading;
-    const inp = document.createElement("input"); inp.className = "modal-input"; inp.type = "text"; inp.value = value; inp.placeholder = label;
-    const btns = document.createElement("div"); btns.className = "modal-btns";
-    const cancel = document.createElement("button"); cancel.className = "modal-btn"; cancel.textContent = "Cancel"; cancel.onclick = () => overlay.remove();
-    const ok = document.createElement("button"); ok.className = "modal-btn modal-btn-ok"; ok.textContent = "OK"; ok.onclick = () => { overlay.remove(); callback(inp.value.trim()); };
-    inp.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); ok.click(); } if (e.key === "Escape") { e.preventDefault(); overlay.remove(); } };
+    const box     = document.createElement("div"); box.className = "modal-box";
+    const h       = document.createElement("div"); h.className = "modal-heading"; h.textContent = heading;
+    const inp     = document.createElement("input"); inp.className = "modal-input"; inp.type = "text"; inp.value = value; inp.placeholder = label;
+    const btns    = document.createElement("div"); btns.className = "modal-btns";
+    const cancel  = document.createElement("button"); cancel.className = "modal-btn"; cancel.textContent = "Cancel"; cancel.onclick = () => overlay.remove();
+    const ok      = document.createElement("button"); ok.className = "modal-btn modal-btn-ok"; ok.textContent = "OK"; ok.onclick = () => { overlay.remove(); callback(inp.value.trim()); };
+    inp.onkeydown = e => {
+        if (e.key === "Enter")  { e.preventDefault(); ok.click(); }
+        if (e.key === "Escape") { e.preventDefault(); overlay.remove(); }
+    };
     btns.appendChild(cancel); btns.appendChild(ok);
     box.appendChild(h); box.appendChild(inp); box.appendChild(btns);
     overlay.appendChild(box); document.body.appendChild(overlay);
-    // Always auto-focus the text input so typing works immediately
     setTimeout(() => { inp.focus(); inp.select(); }, 50);
 }
 
+
+// ── Filtering ─────────────────────────────────────────────────────────────────
 
 function getFilteredChannels() {
     const q = document.getElementById("search").value.toLowerCase();
@@ -672,7 +694,7 @@ function getFilteredChannels() {
     if (activeCategory === "favs") {
         let favList = favourites.map(id => allChannels.find(ch => String(ch.stream_id) === id)).filter(Boolean);
         if (activeFavGroup !== "all") {
-            const g = favGroups.find(x => x.id === activeFavGroup);
+            const g   = favGroups.find(x => x.id === activeFavGroup);
             const ids = g ? g.channelIds : [];
             favList = favList.filter(ch => ids.includes(String(ch.stream_id)));
         }
@@ -719,6 +741,8 @@ function setupSearch() {
 }
 
 
+// ── Timeline ──────────────────────────────────────────────────────────────────
+
 function getTimelineStart() {
     const now     = new Date();
     const rounded = Math.floor((now.getHours() * 60 + now.getMinutes()) / 30) * 30;
@@ -754,6 +778,8 @@ function renderTimelineHeader() {
     else line.style.display = "none";
 }
 
+
+// ── EPG strip rendering ───────────────────────────────────────────────────────
 
 function patchEpgStrip(streamId) {
     const entry = rowCache.get(String(streamId));
@@ -811,13 +837,15 @@ function buildEpgStrip(strip, sid) {
         block.addEventListener("click", ev => {
             ev.stopPropagation();
             const cached = rowCache.get(sid);
-            if (cached) { const ch = allChannels.find(c => String(c.stream_id) === sid); if (ch) selectChannel(ch, cached.row); }
+            if (cached) { const ch = allChannels.find(c => String(c.stream_id) === sid); if (ch) selectChannel(ch); }
         });
         frag.appendChild(block);
     });
     strip.appendChild(frag);
 }
 
+
+// ── Channel selection ─────────────────────────────────────────────────────────
 
 async function selectChannel(ch) {
     currentChannel = ch;
@@ -849,8 +877,7 @@ async function selectChannel(ch) {
 }
 
 function updateOSDIfFullscreen() {
-    const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
-    if (isFs) showOSD();
+    if (!!(document.fullscreenElement || document.webkitFullscreenElement)) showOSD();
 }
 
 function setEPG(slot, title, time, desc) {
@@ -860,6 +887,24 @@ function setEPG(slot, title, time, desc) {
     if (el) el.textContent = desc || "";
 }
 
+function showPreviewInfo() {
+    document.getElementById("preview-info")?.classList.add("preview-visible");
+}
+
+function channelStep(delta) {
+    if (!_vsChannels.length) return;
+    let idx = currentChannel
+        ? _vsChannels.findIndex(ch => String(ch.stream_id) === String(currentChannel.stream_id))
+        : -1;
+    if (idx < 0) idx = delta > 0 ? -1 : _vsChannels.length;
+    idx = Math.max(0, Math.min(_vsChannels.length - 1, idx + delta));
+    tvRowIndex = idx;
+    const ch = _vsChannels[idx];
+    if (ch) { selectChannel(ch); tvFocusRow(idx); }
+}
+
+
+// ── EPG time helpers ──────────────────────────────────────────────────────────
 
 const _epgTimeCache = Object.create(null);
 function parseEpgTime(s) {
@@ -873,209 +918,109 @@ function formatTimeRange(start, end) {
     return a && b ? `${a} – ${b}` : (a || "");
 }
 function calcProgress(start, end) {
-    try { const s = parseEpgTime(start), e = parseEpgTime(end), now = Date.now(); if (now < s || now > e) return 0; return Math.round(((now - s) / (e - s)) * 100); }
-    catch { return 0; }
-}
-
-// ── Auto-updater ─────────────────────────────────────────────────────────────
-
-const MANIFEST_URL = "https://github.com/sharktie/lg-iptv/releases/latest/download/manifest.json";
-const MANIFEST_FALLBACK_URL = "https://raw.githubusercontent.com/sharktie/lg-iptv/main/manifest.json";
-
-function compareVersions(v1, v2) {
-    const a = String(v1).split(".").map(Number);
-    const b = String(v2).split(".").map(Number);
-    for (let i = 0; i < Math.max(a.length, b.length); i++) {
-        const diff = (a[i] || 0) - (b[i] || 0);
-        if (diff !== 0) return diff > 0 ? 1 : -1;
-    }
-    return 0;
-}
-
-async function fetchWithTimeout(url, timeoutMs = 12000, init = {}) {
-    const ctrl = new AbortController();
-    const tid  = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
-        const res = await fetch(url, { signal: ctrl.signal, cache: "no-store", ...init });
-        clearTimeout(tid);
-        return res;
-    } catch (err) {
-        clearTimeout(tid);
-        throw err;
-    }
+        const s = parseEpgTime(start), e = parseEpgTime(end), now = Date.now();
+        if (now < s || now > e) return 0;
+        return Math.round(((now - s) / (e - s)) * 100);
+    } catch { return 0; }
 }
 
-async function fetchRemoteManifest() {
-    const url = `${MANIFEST_URL}?t=${Date.now()}`;
+
+// ── XMLTV / custom EPG ────────────────────────────────────────────────────────
+
+let xmltvCache = {};
+
+async function loadCustomXMLTV(url, matchField) {
     try {
-        const res = await fetchWithTimeout(url);
-        if (!res.ok) throw new Error(`Manifest fetch failed: HTTP ${res.status}`);
-        return await res.json();
-    } catch (_) {
-        // primary manifest fetch failed, fall back silently
-    }
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const text   = await res.text();
+        const parser = new DOMParser();
+        const doc    = parser.parseFromString(text, "application/xml");
+        if (doc.querySelector("parseerror")) throw new Error("Invalid XMLTV XML");
 
-    const fallbackUrl = `${MANIFEST_FALLBACK_URL}?t=${Date.now()}`;
-    const res = await fetchWithTimeout(fallbackUrl);
-    if (!res.ok) throw new Error(`Fallback manifest fetch failed: HTTP ${res.status}`);
-    return await res.json();
-}
-
-async function checkForUpdates() {
-    try {
-        const localRes = await fetchWithTimeout("./appinfo.json");
-        if (!localRes.ok) throw new Error("Could not read appinfo.json");
-        const localInfo = await localRes.json();
-        const currentVersion = localInfo.version;
-
-        const manifest = await fetchRemoteManifest();
-        if (!manifest?.version) throw new Error("Invalid update manifest");
-
-        if (compareVersions(manifest.version, currentVersion) > 0) {
-            showUpdatePrompt(currentVersion, manifest.version, manifest.ipkUrl || manifest.ipk_url);
-        }
-    } catch (_) {
-        // update check failed silently
-    }
-}
-
-function showUpdatePrompt(currentVersion, newVersion, ipkUrl) {
-    // Build a dedicated confirm modal — does not reuse showInputModal
-    const overlay = document.createElement("div");
-    overlay.className = "modal-overlay";
-    overlay.id = "update-modal";
-
-    overlay.innerHTML = `
-        <div class="modal-box update-modal-box">
-            <div class="update-modal-icon">📺</div>
-            <div class="modal-heading">Update Available</div>
-            <div class="update-modal-versions">
-                <span class="update-ver-old">v${currentVersion}</span>
-                <span class="update-ver-arrow">→</span>
-                <span class="update-ver-new">v${newVersion}</span>
-            </div>
-            <p class="update-modal-desc">A new version of LiveTV is ready to install. The app will restart automatically after updating.</p>
-            <div class="modal-btns update-modal-btns">
-                <button class="modal-btn" id="update-later-btn">Later</button>
-                <button class="modal-btn modal-btn-ok" id="update-now-btn">⬇ Update Now</button>
-            </div>
-            <div id="update-progress" class="update-progress" style="display:none">
-                <div class="update-progress-bar"><div class="update-progress-fill" id="update-progress-fill"></div></div>
-                <div class="update-progress-msg" id="update-progress-msg">Installing…</div>
-            </div>
-        </div>`;
-
-    // Append as last child of body so it's outside any transformed/contained
-    // ancestor that would break fixed positioning on webOS.
-    document.body.appendChild(overlay);
-
-    const laterBtn    = overlay.querySelector("#update-later-btn");
-    const nowBtn      = overlay.querySelector("#update-now-btn");
-    const progressBox = overlay.querySelector("#update-progress");
-
-    laterBtn.addEventListener("click", () => overlay.remove());
-
-    nowBtn.addEventListener("click", () => {
-        // Switch to progress UI
-        laterBtn.disabled = true;
-        nowBtn.disabled   = true;
-        nowBtn.textContent = "Installing…";
-        progressBox.style.display = "block";
-        setUpdateProgress(10, "Downloading update…");
-
-        installUpdate(ipkUrl, (pct, msg) => setUpdateProgress(pct, msg))
-            .then(() => {
-                setUpdateProgress(100, "Install complete — restarting…");
-                setTimeout(() => {
-                    // webOS close / relaunch
-                    try { webOS.platformBack(); } catch (_) {}
-                    try { window.close(); } catch (_) {}
-                }, 2000);
-            })
-            .catch(err => {
-                setUpdateProgress(0, "");
-                progressBox.style.display = "none";
-                laterBtn.disabled = false;
-                nowBtn.disabled   = false;
-                nowBtn.textContent = "⬇ Update Now";
-                showUpdateError(overlay, err);
-            });
-    });
-
-    // Always focus the Update Now button — the TV remote needs a focused element
-    // to interact with, and _tvUsingKeyboard may still be false at boot time.
-    setTimeout(() => {
-        _tvUsingKeyboard = true;
-        document.querySelectorAll(".tv-focus-visible").forEach(el => el.classList.remove("tv-focus-visible"));
-        nowBtn.classList.add("tv-focus-visible");
-        nowBtn.focus({ preventScroll: true });
-    }, 80);
-}
-
-function setUpdateProgress(pct, msg) {
-    const fill = document.getElementById("update-progress-fill");
-    const text = document.getElementById("update-progress-msg");
-    if (fill) fill.style.width = pct + "%";
-    if (text) text.textContent = msg;
-}
-
-function showUpdateError(overlay, err) {
-    let errBox = overlay.querySelector(".update-error-msg");
-    if (!errBox) {
-        errBox = document.createElement("div");
-        errBox.className = "update-error-msg";
-        overlay.querySelector(".update-modal-box").appendChild(errBox);
-    }
-    errBox.textContent = "Install failed: " + (err?.message || String(err));
-}
-
-function installUpdate(ipkUrl, onProgress) {
-    return new Promise((resolve, reject) => {
-        if (typeof webOS === "undefined" || !webOS.service) {
-            reject(new Error("webOS service not available — are you running on a real LG TV?"));
-            return;
-        }
-
-        onProgress && onProgress(30, "Requesting install service…");
-
-        webOS.service.request("luna://com.webos.appInstallService/dev/install", {
-            method: "install",
-            parameters: { id: "com.sharktie.iptv", ipkUrl: ipkUrl },
-            onSuccess: function (res) {
-                onProgress && onProgress(90, "Finalising…");
-                resolve(res);
-            },
-            onFailure: function (err) {
-                reject(new Error(err?.errorText || err?.errorCode || JSON.stringify(err)));
-            }
+        const channelMap = {};
+        doc.querySelectorAll("channel").forEach(ch => {
+            const id   = ch.getAttribute("id") || "";
+            const name = ch.querySelector("display-name")?.textContent?.trim() || id;
+            channelMap[id] = name;
         });
+
+        const parsed = {};
+        doc.querySelectorAll("programme").forEach(prog => {
+            const chId  = prog.getAttribute("channel") || "";
+            const start = parseXMLTVDate(prog.getAttribute("start"));
+            const stop  = parseXMLTVDate(prog.getAttribute("stop"));
+            const title = prog.querySelector("title")?.textContent?.trim() || "";
+            const desc  = prog.querySelector("desc")?.textContent?.trim()  || "";
+            if (!start || !stop) return;
+            if (!parsed[chId]) parsed[chId] = [];
+            parsed[chId].push({ title, desc, start: toEpgTimeStr(start), end: toEpgTimeStr(stop) });
+        });
+
+        xmltvCache = { programmes: parsed, channelMap, matchField };
+        try { localStorage.setItem("iptv_xmltv_cache", JSON.stringify({ ts: Date.now(), data: xmltvCache })); } catch {}
+
+        const count = Object.keys(parsed).length;
+        setSettingsStatus("epg-load-status", `✓ Loaded ${count} channels from XMLTV.`, "ok");
+        mergeXMLTVIntoEpgCache();
+        refreshTimeline();
+    } catch (err) {
+        setSettingsStatus("epg-load-status", "Error: " + err.message, "err");
+    }
+}
+
+function parseXMLTVDate(str) {
+    if (!str) return null;
+    const m = str.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\s*([+-]\d{4})?/);
+    if (!m) return null;
+    const [, yr, mo, dy, hh, mm, ss, tz] = m;
+    const tzStr = tz ? tz.slice(0, 3) + ":" + tz.slice(3) : "+00:00";
+    return new Date(`${yr}-${mo}-${dy}T${hh}:${mm}:${ss}${tzStr}`).getTime();
+}
+function toEpgTimeStr(ms) {
+    return new Date(ms).toISOString().replace("T", " ").replace(/\.\d+Z$/, "");
+}
+
+function loadXMLTVFromCache() {
+    try {
+        const raw = localStorage.getItem("iptv_xmltv_cache");
+        if (!raw) return;
+        const { ts, data } = JSON.parse(raw);
+        if (Date.now() - ts > 24 * 60 * 60 * 1000) return;
+        xmltvCache = data;
+    } catch {}
+}
+
+function mergeXMLTVIntoEpgCache() {
+    if (!xmltvCache.programmes) return;
+    const matchField = xmltvCache.matchField || "tvg-id";
+    allChannels.forEach(ch => {
+        const sid = String(ch.stream_id);
+        let listings = null;
+        if (matchField === "tvg-id") {
+            const epgId = ch.epg_channel_id || "";
+            listings = xmltvCache.programmes[epgId] || null;
+            if (!listings && epgId) {
+                for (const [xmlId, name] of Object.entries(xmltvCache.channelMap || {})) {
+                    if (name.toLowerCase() === (ch.name || "").toLowerCase()) {
+                        listings = xmltvCache.programmes[xmlId] || null; break;
+                    }
+                }
+            }
+        } else {
+            for (const [xmlId, name] of Object.entries(xmltvCache.channelMap || {})) {
+                if (name.toLowerCase() === (ch.name || "").toLowerCase()) {
+                    listings = xmltvCache.programmes[xmlId] || null; break;
+                }
+            }
+        }
+        if (listings) epgCache[sid] = listings;
     });
 }
 
-// ── End auto-updater ──────────────────────────────────────────────────────────
 
-
-window.onload = function () {
-    
-    const savedCfg = load("iptv_custom_config", null);
-    if (savedCfg && savedCfg.server_url) window.IPTV_CONFIG = savedCfg;
-
-    
-    loadXMLTVFromCache();
-
-    initVirtualScroll();
-    initSettingsTabs();
-    initSettingsPanel();
-    initTVNavigation();
-    initApp();
-
-    setTimeout(checkForUpdates, 2000); // Check for updates 2 seconds after app init
-    
-    if (load("iptv_custom_epg_url", "")) {
-        setTimeout(() => mergeXMLTVIntoEpgCache(), 2000);
-    }
-};
-
+// ── Settings panel ────────────────────────────────────────────────────────────
 
 function initSettingsTabs() {
     document.querySelectorAll(".sidebar-tab").forEach(tab => {
@@ -1086,11 +1031,9 @@ function initSettingsTabs() {
             document.getElementById("panel-" + tab.dataset.tab).classList.add("active");
             if (tab.dataset.tab === "settings") {
                 populateSettingsForm();
-                // If we arrived here via D-pad, switch zone to settings
-                if (_tvUsingKeyboard) { tvSidebarIndex = 0; setTVZone("settings"); }
+                tvSidebarIndex = 0; setTVZone("settings");
             } else {
-                // Channels tab
-                if (_tvUsingKeyboard) { tvSidebarIndex = 0; setTVZone("sidebar-cats"); }
+                tvSidebarIndex = 0; setTVZone("sidebar-cats");
             }
         });
     });
@@ -1117,7 +1060,6 @@ function initSettingsPanel() {
         }
         save("iptv_custom_config", newCfg);
         setSettingsStatus("cfg-status", "Saved! Reconnecting…", "ok");
-        
         try { localStorage.removeItem("iptv_ch_v2"); localStorage.removeItem("iptv_cat_v2"); } catch {}
         window.IPTV_CONFIG = newCfg;
         cfg = newCfg;
@@ -1126,7 +1068,6 @@ function initSettingsPanel() {
             document.getElementById("categories").innerHTML = "";
             document.getElementById("channel-list").innerHTML = "";
             initApp();
-            
             document.getElementById("tab-channels").click();
         }, 600);
     });
@@ -1161,710 +1102,165 @@ function setSettingsStatus(elId, msg, cls) {
 }
 
 
-let xmltvCache = {}; 
+// ── Auto-updater ──────────────────────────────────────────────────────────────
 
-async function loadCustomXMLTV(url, matchField) {
+const MANIFEST_URL          = "https://github.com/sharktie/lg-iptv/releases/latest/download/manifest.json";
+const MANIFEST_FALLBACK_URL = "https://raw.githubusercontent.com/sharktie/lg-iptv/main/manifest.json";
+
+function compareVersions(v1, v2) {
+    const a = String(v1).split(".").map(Number);
+    const b = String(v2).split(".").map(Number);
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        const diff = (a[i] || 0) - (b[i] || 0);
+        if (diff !== 0) return diff > 0 ? 1 : -1;
+    }
+    return 0;
+}
+
+async function fetchWithTimeout(url, timeoutMs = 12000) {
+    const ctrl = new AbortController();
+    const tid  = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        const text = await res.text();
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(text, "application/xml");
-        if (doc.querySelector("parseerror")) throw new Error("Invalid XMLTV XML");
-
-        
-        const channelMap = {}; 
-        doc.querySelectorAll("channel").forEach(ch => {
-            const id   = ch.getAttribute("id") || "";
-            const name = ch.querySelector("display-name")?.textContent?.trim() || id;
-            channelMap[id] = name;
-        });
-
-        
-        const parsed = {};
-        doc.querySelectorAll("programme").forEach(prog => {
-            const chId = prog.getAttribute("channel") || "";
-            const start = parseXMLTVDate(prog.getAttribute("start"));
-            const stop  = parseXMLTVDate(prog.getAttribute("stop"));
-            const title = prog.querySelector("title")?.textContent?.trim() || "";
-            const desc  = prog.querySelector("desc")?.textContent?.trim()  || "";
-            if (!start || !stop) return;
-            if (!parsed[chId]) parsed[chId] = [];
-            parsed[chId].push({ title, desc, start: toEpgTimeStr(start), end: toEpgTimeStr(stop) });
-        });
-
-        xmltvCache = { programmes: parsed, channelMap, matchField };
-        
-        try { localStorage.setItem("iptv_xmltv_cache", JSON.stringify({ ts: Date.now(), data: xmltvCache })); } catch {}
-
-        const count = Object.keys(parsed).length;
-        setSettingsStatus("epg-load-status", `✓ Loaded ${count} channels from XMLTV.`, "ok");
-
-        
-        mergeXMLTVIntoEpgCache();
-        refreshTimeline();
+        const res = await fetch(url, { signal: ctrl.signal, cache: "no-store" });
+        clearTimeout(tid);
+        return res;
     } catch (err) {
-        setSettingsStatus("epg-load-status", "Error: " + err.message, "err");
+        clearTimeout(tid);
+        throw err;
     }
 }
 
-function parseXMLTVDate(str) {
-    if (!str) return null;
-    
-    const m = str.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\s*([+-]\d{4})?/);
-    if (!m) return null;
-    const [, yr, mo, dy, hh, mm, ss, tz] = m;
-    const tzStr = tz ? tz.slice(0,3) + ":" + tz.slice(3) : "+00:00";
-    return new Date(`${yr}-${mo}-${dy}T${hh}:${mm}:${ss}${tzStr}`).getTime();
-}
-function toEpgTimeStr(ms) {
-    
-    return new Date(ms).toISOString().replace("T", " ").replace(/\.\d+Z$/, "");
-}
-
-function loadXMLTVFromCache() {
+async function fetchRemoteManifest() {
     try {
-        const raw = localStorage.getItem("iptv_xmltv_cache");
-        if (!raw) return;
-        const { ts, data } = JSON.parse(raw);
-        if (Date.now() - ts > 24 * 60 * 60 * 1000) return; 
-        xmltvCache = data;
-    } catch {}
+        const res = await fetchWithTimeout(`${MANIFEST_URL}?t=${Date.now()}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+    } catch (_) {}
+    const res = await fetchWithTimeout(`${MANIFEST_FALLBACK_URL}?t=${Date.now()}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
 }
 
-function mergeXMLTVIntoEpgCache() {
-    if (!xmltvCache.programmes) return;
-    const matchField = xmltvCache.matchField || "tvg-id";
-    allChannels.forEach(ch => {
-        const sid = String(ch.stream_id);
-        
-        let listings = null;
-        if (matchField === "tvg-id") {
-            const epgId = ch.epg_channel_id || "";
-            listings = xmltvCache.programmes[epgId] || null;
-            
-            if (!listings && epgId) {
-                for (const [xmlId, name] of Object.entries(xmltvCache.channelMap || {})) {
-                    if (name.toLowerCase() === (ch.name || "").toLowerCase()) {
-                        listings = xmltvCache.programmes[xmlId] || null; break;
-                    }
-                }
-            }
-        } else {
-            
-            for (const [xmlId, name] of Object.entries(xmltvCache.channelMap || {})) {
-                if (name.toLowerCase() === (ch.name || "").toLowerCase()) {
-                    listings = xmltvCache.programmes[xmlId] || null; break;
-                }
-            }
+async function checkForUpdates() {
+    try {
+        const localRes = await fetchWithTimeout("./appinfo.json");
+        if (!localRes.ok) return;
+        const localInfo = await localRes.json();
+        const manifest  = await fetchRemoteManifest();
+        if (!manifest?.version) return;
+        if (compareVersions(manifest.version, localInfo.version) > 0) {
+            showUpdatePrompt(localInfo.version, manifest.version, manifest.ipkUrl || manifest.ipk_url);
         }
-        if (listings) epgCache[sid] = listings;
+    } catch (_) {}
+}
+
+function showUpdatePrompt(currentVersion, newVersion, ipkUrl) {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.id = "update-modal";
+    overlay.innerHTML = `
+        <div class="modal-box update-modal-box">
+            <div class="update-modal-icon">📺</div>
+            <div class="modal-heading">Update Available</div>
+            <div class="update-modal-versions">
+                <span class="update-ver-old">v${currentVersion}</span>
+                <span class="update-ver-arrow">→</span>
+                <span class="update-ver-new">v${newVersion}</span>
+            </div>
+            <p class="update-modal-desc">A new version of LiveTV is ready to install. The app will restart automatically after updating.</p>
+            <div class="modal-btns update-modal-btns">
+                <button class="modal-btn" id="update-later-btn">Later</button>
+                <button class="modal-btn modal-btn-ok" id="update-now-btn">⬇ Update Now</button>
+            </div>
+            <div id="update-progress" class="update-progress" style="display:none">
+                <div class="update-progress-bar"><div class="update-progress-fill" id="update-progress-fill"></div></div>
+                <div class="update-progress-msg" id="update-progress-msg">Installing…</div>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    const laterBtn    = overlay.querySelector("#update-later-btn");
+    const nowBtn      = overlay.querySelector("#update-now-btn");
+    const progressBox = overlay.querySelector("#update-progress");
+
+    laterBtn.addEventListener("click", () => overlay.remove());
+
+    nowBtn.addEventListener("click", () => {
+        laterBtn.disabled = true; nowBtn.disabled = true; nowBtn.textContent = "Installing…";
+        progressBox.style.display = "block";
+        setUpdateProgress(10, "Downloading update…");
+        installUpdate(ipkUrl, (pct, msg) => setUpdateProgress(pct, msg))
+            .then(() => {
+                setUpdateProgress(100, "Install complete — restarting…");
+                setTimeout(() => {
+                    try { webOS.platformBack(); } catch (_) {}
+                    try { window.close(); } catch (_) {}
+                }, 2000);
+            })
+            .catch(err => {
+                setUpdateProgress(0, "");
+                progressBox.style.display = "none";
+                laterBtn.disabled = false; nowBtn.disabled = false; nowBtn.textContent = "⬇ Update Now";
+                showUpdateError(overlay, err);
+            });
     });
-}
 
-
-
-
-function showPreviewInfo() {
-    const info = document.getElementById("preview-info");
-    if (!info) return;
-    info.classList.add("preview-visible");
-}
-
-
-function channelStep(delta) {
-    if (!_vsChannels.length) return;
-    
-    let idx = currentChannel
-        ? _vsChannels.findIndex(ch => String(ch.stream_id) === String(currentChannel.stream_id))
-        : -1;
-    if (idx < 0) idx = delta > 0 ? -1 : _vsChannels.length;
-    idx = Math.max(0, Math.min(_vsChannels.length - 1, idx + delta));
-    tvRowIndex = idx;
-    const ch = _vsChannels[idx];
-    if (ch) {
-        selectChannel(ch);
-        tvFocusRow(idx);
-    }
-}
-
-
-
-let tvFocusZone = "channel-list";
-let tvRowIndex  = 0;   
-let tvSidebarIndex = 0; 
-let _tvUsingKeyboard = false;
-let _fsEnterPressTimer = null;
-// When true the focused settings input/select is in "edit mode" — keys go to the field
-let _settingsInputActive = false;
-
-function initTVNavigation() {
-    document.addEventListener("keydown", onTVKeyDown, { passive: false });
-
-    // webOS: tell the OS this app handles the back button itself.
-    // Without this the system intercepts it and shows the "exit app" prompt.
-    try { if (typeof webOSSystem !== "undefined") webOSSystem.notifyAppLoaded(); } catch (_) {}
-
-    document.addEventListener("mousedown", () => {
-        _tvUsingKeyboard = false;
-        _settingsInputActive = false;
+    setTimeout(() => {
         document.querySelectorAll(".tv-focus-visible").forEach(el => el.classList.remove("tv-focus-visible"));
+        nowBtn.classList.add("tv-focus-visible");
+        nowBtn.focus({ preventScroll: true });
+    }, 80);
+}
+
+function setUpdateProgress(pct, msg) {
+    const fill = document.getElementById("update-progress-fill");
+    const text = document.getElementById("update-progress-msg");
+    if (fill) fill.style.width = pct + "%";
+    if (text) text.textContent = msg;
+}
+
+function showUpdateError(overlay, err) {
+    let errBox = overlay.querySelector(".update-error-msg");
+    if (!errBox) {
+        errBox = document.createElement("div"); errBox.className = "update-error-msg";
+        overlay.querySelector(".update-modal-box").appendChild(errBox);
+    }
+    errBox.textContent = "Install failed: " + (err?.message || String(err));
+}
+
+function installUpdate(ipkUrl, onProgress) {
+    return new Promise((resolve, reject) => {
+        if (typeof webOS === "undefined" || !webOS.service) {
+            reject(new Error("webOS service not available")); return;
+        }
+        onProgress && onProgress(30, "Requesting install service…");
+        webOS.service.request("luna://com.webos.appInstallService/dev/install", {
+            method: "install",
+            parameters: { id: "com.sharktie.iptv", ipkUrl },
+            onSuccess: res  => { onProgress && onProgress(90, "Finalising…"); resolve(res); },
+            onFailure: err2 => { reject(new Error(err2?.errorText || err2?.errorCode || JSON.stringify(err2))); }
+        });
     });
 }
 
 
-let tvRowSubZone = "row";
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
 
-function onTVKeyDown(e) {
-    const key = e.key;
+window.onload = function () {
+    const savedCfg = load("iptv_custom_config", null);
+    if (savedCfg && savedCfg.server_url) window.IPTV_CONFIG = savedCfg;
 
-    // ── Modal dialog (highest priority) ──────────────────────────────────────
-    const modal = document.querySelector(".modal-overlay");
-    if (modal) {
-        _handleModalKey(e, modal);
-        return;
+    loadXMLTVFromCache();
+
+    initVirtualScroll();
+    initSettingsTabs();
+    initSettingsPanel();
+    initTVNavigation();
+    initApp();
+
+    setTimeout(checkForUpdates, 2000);
+
+    if (load("iptv_custom_epg_url", "")) {
+        setTimeout(() => mergeXMLTVIntoEpgCache(), 2000);
     }
-
-    // ── Assign panel ─────────────────────────────────────────────────────────
-    const assignPanel = document.querySelector(".assign-panel");
-    if (assignPanel) {
-        _handleAssignPanelKey(e, assignPanel);
-        return;
-    }
-
-    // ── Context menu ─────────────────────────────────────────────────────────
-    const ctxMenu = document.querySelector(".ctx-menu");
-    if (ctxMenu) {
-        _handleCtxMenuKey(e, ctxMenu);
-        return;
-    }
-
-    // ── Settings input active (typing mode) ─────────────────────────────────
-    if (_settingsInputActive) {
-        const activeEl = document.activeElement;
-        if (key === "Escape") {
-            e.preventDefault();
-            _settingsInputActive = false;
-            if (activeEl) { activeEl.blur(); activeEl.classList.remove("tv-input-active"); }
-            setTVZone("settings");
-        }
-        // For SELECT elements handle with arrow keys normally but intercept Enter
-        if (activeEl?.tagName === "SELECT" && key === "Enter") {
-            e.preventDefault();
-            _settingsInputActive = false;
-            activeEl.blur(); activeEl.classList.remove("tv-input-active");
-            setTVZone("settings");
-        }
-        // All other keys pass through to the input
-        return;
-    }
-
-    // ── Suppress navigation when a plain input has browser focus (fallback) ──
-    const tag = document.activeElement?.tagName;
-    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
-        if (key === "Escape") { document.activeElement.blur(); setTVZone("channel-list"); }
-        return;
-    }
-
-    _tvUsingKeyboard = true;
-    const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
-
-    // ── Up / Down ─────────────────────────────────────────────────────────────
-    if (key === "ArrowUp" || key === "ArrowDown") {
-        e.preventDefault();
-        if (isFs) { channelStep(key === "ArrowUp" ? -1 : 1); showOSD(); return; }
-        const delta = key === "ArrowUp" ? -1 : 1;
-
-        if (tvFocusZone === "channel-list") {
-            // While on col4, Up/Down toggles between the two reorder half-buttons
-            if (tvRowSubZone === "reorder-up" && key === "ArrowDown") {
-                tvRowSubZone = "reorder-down"; tvFocusRowButtons(); return;
-            }
-            if (tvRowSubZone === "reorder-down" && key === "ArrowUp") {
-                tvRowSubZone = "reorder-up"; tvFocusRowButtons(); return;
-            }
-            tvRowSubZone = "row";
-            tvRowIndex = Math.max(0, Math.min(_vsChannels.length - 1, tvRowIndex + delta));
-            tvFocusRow(tvRowIndex);
-        } else if (tvFocusZone === "pip") {
-            setTVZone("channel-list");
-        } else if (tvFocusZone === "sidebar-cats" || tvFocusZone === "settings") {
-            const items = getSidebarFocusables();
-            if (key === "ArrowUp" && tvSidebarIndex === 0) {
-                setTVZone("sidebar-tabs");
-            } else {
-                tvSidebarIndex = Math.max(0, Math.min(items.length - 1, tvSidebarIndex + delta));
-                tvFocusSidebarItem(tvSidebarIndex);
-            }
-        } else if (tvFocusZone === "search") {
-            // Search box is above tabs; down moves to tabs
-            if (key === "ArrowDown") setTVZone("sidebar-tabs");
-        } else if (tvFocusZone === "tl-nav") {
-            if (key === "ArrowUp") setTVZone("channel-list");
-        } else if (tvFocusZone === "sidebar-tabs") {
-            if (key === "ArrowUp") {
-                setTVZone("search");
-            } else if (key === "ArrowDown") {
-                const activeTab = document.querySelector(".sidebar-tab.active");
-                if (activeTab?.dataset.tab === "settings") setTVZone("settings");
-                else setTVZone("sidebar-cats");
-            }
-        }
-        return;
-    }
-
-    // ── Left ──────────────────────────────────────────────────────────────────
-    if (key === "ArrowLeft") {
-        e.preventDefault();
-        if (isFs) { showOSD(); return; }
-        if (tvFocusZone === "channel-list") {
-            // Reverse order: col4dn → col4up → col3 → col2 → col1
-            if (tvRowSubZone === "reorder-down") { tvRowSubZone = "reorder-up"; tvFocusRowButtons(); }
-            else if (tvRowSubZone === "reorder-up") {
-                const entry2 = _vsChannels[tvRowIndex] ? rowCache.get(String(_vsChannels[tvRowIndex].stream_id)) : null;
-                if (entry2?.col3?.style?.display !== "none") { tvRowSubZone = "assign"; tvFocusRowButtons(); }
-                else { tvRowSubZone = "fav"; tvFocusRowButtons(); }
-            }
-            else if (tvRowSubZone === "assign") { tvRowSubZone = "fav"; tvFocusRowButtons(); }
-            else if (tvRowSubZone === "fav") { tvRowSubZone = "row"; tvFocusRow(tvRowIndex); }
-            else { setTVZone("sidebar-cats"); }
-        } else if (tvFocusZone === "tl-nav") {
-            setTVZone("channel-list");
-        } else if (tvFocusZone === "sidebar-tabs") {
-            _moveSidebarTab(-1);
-        }
-        return;
-    }
-
-    // ── Right ─────────────────────────────────────────────────────────────────
-    if (key === "ArrowRight") {
-        e.preventDefault();
-        if (isFs) { showOSD(); return; }
-        if (tvFocusZone === "sidebar-cats" || tvFocusZone === "settings") {
-            setTVZone("channel-list");
-        } else if (tvFocusZone === "channel-list") {
-            const ch = _vsChannels[tvRowIndex];
-            const entry = ch ? rowCache.get(String(ch.stream_id)) : null;
-            // Order: col1(row) → col2(fav) → col3(assign) → col4up(reorder-up) → col4dn(reorder-down) → tl-nav
-            if (tvRowSubZone === "row") {
-                tvRowSubZone = "fav"; tvFocusRowButtons();
-            } else if (tvRowSubZone === "fav") {
-                if (entry?.col3?.style?.display !== "none") {
-                    tvRowSubZone = "assign"; tvFocusRowButtons();
-                } else if (entry?.col4?.style?.display !== "none") {
-                    tvRowSubZone = "reorder-up"; tvFocusRowButtons();
-                } else { setTVZone("tl-nav"); }
-            } else if (tvRowSubZone === "assign") {
-                if (entry?.col4?.style?.display !== "none") {
-                    tvRowSubZone = "reorder-up"; tvFocusRowButtons();
-                } else { setTVZone("tl-nav"); }
-            } else if (tvRowSubZone === "reorder-up") {
-                tvRowSubZone = "reorder-down"; tvFocusRowButtons();
-            } else {
-                setTVZone("tl-nav");
-            }
-        } else if (tvFocusZone === "sidebar-tabs") {
-            _moveSidebarTab(1);
-        }
-        return;
-    }
-
-    // ── Enter / OK ────────────────────────────────────────────────────────────
-    if (key === "Enter" || key === " ") {
-        e.preventDefault();
-        if (isFs) {
-            if (_fsEnterPressTimer) {
-                clearTimeout(_fsEnterPressTimer);
-                _fsEnterPressTimer = null;
-                toggleFullscreen();
-            } else {
-                showOSD();
-                _fsEnterPressTimer = setTimeout(() => { _fsEnterPressTimer = null; }, 600);
-            }
-            return;
-        }
-
-        if (tvFocusZone === "channel-list") {
-            const ch = _vsChannels[tvRowIndex];
-            if (!ch) return;
-            if (tvRowSubZone === "fav") {
-                toggleFav(String(ch.stream_id));
-                const entry = rowCache.get(String(ch.stream_id));
-                if (entry) entry.favBtn.classList.toggle("active", isFav(String(ch.stream_id)));
-                if (activeCategory === "favs") applyFilters();
-            } else if (tvRowSubZone === "assign") {
-                const entry = rowCache.get(String(ch.stream_id));
-                if (entry?.assignBtn) entry.assignBtn.click();
-            } else if (tvRowSubZone === "reorder-up") {
-                _reorderAndRefocus(String(ch.stream_id), -1, "reorder-up");
-            } else if (tvRowSubZone === "reorder-down") {
-                _reorderAndRefocus(String(ch.stream_id), 1, "reorder-down");
-            } else {
-                if (currentChannel && String(currentChannel.stream_id) === String(ch.stream_id)) {
-                    toggleFullscreen();
-                } else {
-                    selectChannel(ch);
-                }
-            }
-        } else if (tvFocusZone === "search") {
-            // OK on search — enter typing mode
-            const searchEl = document.getElementById("search");
-            if (searchEl) {
-                searchEl.classList.add("tv-input-active");
-                searchEl.focus();
-                const len = searchEl.value.length;
-                try { searchEl.setSelectionRange(len, len); } catch (_) {}
-            }
-        } else if (tvFocusZone === "sidebar-cats") {
-            const items = getSidebarFocusables();
-            const el = items[tvSidebarIndex];
-            if (el) el.click();
-        } else if (tvFocusZone === "settings") {
-            const items = getSidebarFocusables();
-            const el = items[tvSidebarIndex];
-            if (!el) return;
-            if (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT") {
-                // Enter edit/type mode
-                _settingsInputActive = true;
-                el.classList.add("tv-input-active");
-                el.focus();
-                if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") {
-                    // Move caret to end
-                    const len = el.value.length;
-                    try { el.setSelectionRange(len, len); } catch {}
-                }
-            } else {
-                el.click();
-            }
-        } else if (tvFocusZone === "tl-nav") {
-            const btns = document.querySelectorAll(".tl-nav-btn");
-            const focused = Array.from(btns).find(b => b.classList.contains("tv-focus-visible"));
-            if (focused) focused.click();
-        } else if (tvFocusZone === "sidebar-tabs") {
-            const tabs = Array.from(document.querySelectorAll(".sidebar-tab"));
-            const focused = tabs.find(t => t.classList.contains("tv-focus-visible"));
-            if (focused) focused.click();
-        }
-        return;
-    }
-
-    // ── Escape / Back ─────────────────────────────────────────────────────────
-    // LG remotes fire keyCode 461 for the back button; key string varies by webOS version.
-    const isBackKey = key === "Escape" || key === "GoBack" || key === "Back" ||
-                      key === "BrowserBack" || e.keyCode === 461 ||
-                      [10009, 10182].includes(e.keyCode) || [10009, 10182].includes(e.which);
-    if (isBackKey) {
-        const isFs2 = !!(document.fullscreenElement || document.webkitFullscreenElement);
-        if (isFs2) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            toggleFullscreen();
-            return;
-        }
-        // Always intercept — navigate to a safe parent zone, never exit the app
-        e.preventDefault();
-        e.stopPropagation();
-        if (tvFocusZone === "channel-list" || tvFocusZone === "tl-nav") {
-            setTVZone("sidebar-cats");
-        } else if (tvFocusZone === "settings") {
-            setTVZone("sidebar-tabs");
-        } else if (tvFocusZone === "sidebar-cats") {
-            setTVZone("sidebar-tabs");
-        } else if (tvFocusZone === "sidebar-tabs") {
-            setTVZone("search");
-        } else {
-            setTVZone("sidebar-cats");
-        }
-        return;
-    }
-
-    // ── Channel up/down media keys ────────────────────────────────────────────
-    if (key === "PageUp"   || key === "ChannelUp"   || key === "MediaTrackPrevious") {
-        e.preventDefault(); channelStep(-1);
-        if (!!(document.fullscreenElement || document.webkitFullscreenElement)) showOSD();
-        return;
-    }
-    if (key === "PageDown" || key === "ChannelDown" || key === "MediaTrackNext") {
-        e.preventDefault(); channelStep(1);
-        if (!!(document.fullscreenElement || document.webkitFullscreenElement)) showOSD();
-        return;
-    }
-
-    // ── Shortcut: F = favourite ───────────────────────────────────────────────
-    if (key === "f" || key === "F") {
-        if (tvFocusZone === "channel-list") {
-            const ch = _vsChannels[tvRowIndex];
-            if (ch) {
-                toggleFav(String(ch.stream_id));
-                const entry = rowCache.get(String(ch.stream_id));
-                if (entry) entry.favBtn.classList.toggle("active", isFav(String(ch.stream_id)));
-                if (activeCategory === "favs") applyFilters();
-            }
-        }
-        return;
-    }
-
-    // ── Tab key zone cycling ──────────────────────────────────────────────────
-    if (key === "Tab") {
-        e.preventDefault();
-        const zones = ["sidebar-cats", "channel-list", "tl-nav"];
-        const cur   = zones.indexOf(tvFocusZone);
-        const next  = e.shiftKey ? (cur - 1 + zones.length) % zones.length : (cur + 1) % zones.length;
-        setTVZone(zones[next]);
-        return;
-    }
-
-    // ── Shortcut: S = settings, C = channels ─────────────────────────────────
-    if (key === "s" || key === "S") {
-        document.getElementById("tab-settings").click();
-        setTVZone("settings");
-        return;
-    }
-    if (key === "c" || key === "C") {
-        document.getElementById("tab-channels").click();
-        setTVZone("sidebar-cats");
-    }
-}
-
-// ── Sidebar tab helper: move focus left/right between tabs ───────────────────
-function _moveSidebarTab(delta) {
-    const tabs = Array.from(document.querySelectorAll(".sidebar-tab"));
-    const focused = tabs.findIndex(t => t.classList.contains("tv-focus-visible"));
-    const next = Math.max(0, Math.min(tabs.length - 1, (focused < 0 ? 0 : focused) + delta));
-    document.querySelectorAll(".tv-focus-visible").forEach(el => el.classList.remove("tv-focus-visible"));
-    tabs[next]?.classList.add("tv-focus-visible");
-}
-
-// ── Modal key handler ────────────────────────────────────────────────────────
-function _handleModalKey(e, modal) {
-    const key = e.key;
-    const inp = modal.querySelector(".modal-input");
-    const okBtn = modal.querySelector(".modal-btn-ok");
-    const cancelBtn = modal.querySelector(".modal-btn:not(.modal-btn-ok)");
-    const focusedBtn = modal.querySelector(".modal-btn.tv-focus-visible");
-
-    if (key === "Escape") {
-        e.preventDefault();
-        modal.remove();
-        return;
-    }
-
-    // If the text input has focus, Enter moves to OK button
-    if (document.activeElement === inp) {
-        if (key === "Enter") {
-            e.preventDefault();
-            inp.blur();
-            _setModalFocus(modal, okBtn);
-        }
-        // All other keys pass through to the input
-        return;
-    }
-
-    e.preventDefault();
-
-    if (key === "ArrowLeft" || key === "ArrowRight" || key === "ArrowUp" || key === "ArrowDown") {
-        // Toggle between OK and Cancel
-        if (focusedBtn === okBtn) _setModalFocus(modal, cancelBtn);
-        else if (focusedBtn === cancelBtn) _setModalFocus(modal, okBtn);
-        else _setModalFocus(modal, inp); // focus input if nothing focused
-        return;
-    }
-
-    if (key === "Enter" || key === " ") {
-        if (focusedBtn) { focusedBtn.click(); return; }
-        // Default: focus input
-        inp?.focus();
-        return;
-    }
-
-    // Any printable char while modal is open but input not focused → focus input
-    if (key.length === 1) {
-        inp?.focus();
-    }
-}
-
-function _setModalFocus(modal, el) {
-    modal.querySelectorAll(".tv-focus-visible").forEach(x => x.classList.remove("tv-focus-visible"));
-    if (el) {
-        el.classList.add("tv-focus-visible");
-        if (el.tagName === "INPUT") { el.focus(); }
-    }
-}
-
-// ── Assign panel key handler ─────────────────────────────────────────────────
-let _assignPanelIndex = 0;
-
-function _handleAssignPanelKey(e, panel) {
-    const key = e.key;
-    if (key === "Escape" || key === "GoBack" || key === "Back") {
-        e.preventDefault();
-        closeAssignPanels();
-        return;
-    }
-    const items = Array.from(panel.querySelectorAll(".assign-row, .assign-new-btn"));
-    if (!items.length) return;
-
-    if (key === "ArrowUp" || key === "ArrowDown") {
-        e.preventDefault();
-        _assignPanelIndex = Math.max(0, Math.min(items.length - 1, _assignPanelIndex + (key === "ArrowDown" ? 1 : -1)));
-        _focusAssignItem(panel, items);
-        return;
-    }
-    if (key === "Enter" || key === " ") {
-        e.preventDefault();
-        const el = items[_assignPanelIndex];
-        if (!el) return;
-        if (el.classList.contains("assign-new-btn")) { el.click(); return; }
-        // Toggle the checkbox in the row
-        const cb = el.querySelector("input[type='checkbox']");
-        if (cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event("change")); }
-        _focusAssignItem(panel, items);
-        return;
-    }
-    e.preventDefault();
-}
-
-function _focusAssignItem(panel, items) {
-    panel.querySelectorAll(".tv-focus-visible").forEach(el => el.classList.remove("tv-focus-visible"));
-    const el = items[_assignPanelIndex];
-    if (el) { el.classList.add("tv-focus-visible"); el.scrollIntoView({ block: "nearest" }); }
-}
-
-// ── Context menu key handler ─────────────────────────────────────────────────
-let _ctxMenuIndex = 0;
-
-function _handleCtxMenuKey(e, menu) {
-    const key = e.key;
-    if (key === "Escape" || key === "GoBack" || key === "Back") {
-        e.preventDefault();
-        closeContextMenus();
-        return;
-    }
-    const items = Array.from(menu.querySelectorAll(".ctx-item"));
-    if (!items.length) return;
-
-    if (key === "ArrowUp" || key === "ArrowDown") {
-        e.preventDefault();
-        _ctxMenuIndex = Math.max(0, Math.min(items.length - 1, _ctxMenuIndex + (key === "ArrowDown" ? 1 : -1)));
-        _focusCtxItem(menu, items);
-        return;
-    }
-    if (key === "Enter" || key === " ") {
-        e.preventDefault();
-        items[_ctxMenuIndex]?.click();
-        return;
-    }
-    e.preventDefault();
-}
-
-function _focusCtxItem(menu, items) {
-    menu.querySelectorAll(".tv-focus-visible").forEach(el => el.classList.remove("tv-focus-visible"));
-    const el = items[_ctxMenuIndex];
-    if (el) { el.classList.add("tv-focus-visible"); el.scrollIntoView({ block: "nearest" }); }
-}
-
-function setTVZone(zone) {
-    // Deactivate any settings input that was active
-    if (_settingsInputActive) {
-        _settingsInputActive = false;
-        const activeEl = document.activeElement;
-        if (activeEl) { activeEl.blur(); activeEl.classList.remove("tv-input-active"); }
-    }
-    tvFocusZone = zone;
-    tvRowSubZone = "row";
-    document.querySelectorAll(".tv-focus-visible").forEach(el => el.classList.remove("tv-focus-visible"));
-    document.querySelectorAll(".tv-row-active").forEach(el => el.classList.remove("tv-row-active"));
-
-    if (zone === "sidebar-cats" || zone === "settings") {
-        const items = getSidebarFocusables();
-        tvSidebarIndex = Math.max(0, Math.min(items.length - 1, tvSidebarIndex));
-        tvFocusSidebarItem(tvSidebarIndex);
-    } else if (zone === "channel-list") {
-        tvRowIndex = Math.max(0, Math.min(_vsChannels.length - 1, tvRowIndex));
-        tvFocusRow(tvRowIndex);
-    } else if (zone === "tl-nav") {
-        const btn = document.getElementById("tl-now");
-        if (btn) btn.classList.add("tv-focus-visible");
-    } else if (zone === "sidebar-tabs") {
-        tvSidebarIndex = 0;
-        const activeTab = document.querySelector(".sidebar-tab.active");
-        if (activeTab) activeTab.classList.add("tv-focus-visible");
-        else document.querySelector(".sidebar-tab")?.classList.add("tv-focus-visible");
-    } else if (zone === "search") {
-        const searchEl = document.getElementById("search");
-        if (searchEl) {
-            searchEl.classList.add("tv-focus-visible");
-            searchEl.focus({ preventScroll: true });
-        }
-    }
-}
-
-function tvFocusRowButtons() {
-    document.querySelectorAll(".tv-focus-visible").forEach(el => el.classList.remove("tv-focus-visible"));
-    const ch = _vsChannels[tvRowIndex];
-    if (!ch) return;
-    const entry = rowCache.get(String(ch.stream_id));
-    if (!entry) return;
-    scrollTVRowIntoView(tvRowIndex);
-    requestAnimationFrame(() => {
-        // Clear any previous row-active on other rows, then highlight this one
-        document.querySelectorAll(".tv-row-active").forEach(el => el.classList.remove("tv-row-active"));
-        entry.row.classList.add("tv-row-active");
-        if (tvRowSubZone === "fav") {
-            entry.col2.classList.add("tv-focus-visible");
-        } else if (tvRowSubZone === "reorder-up" && entry.upBtn) {
-            entry.upBtn.classList.add("tv-focus-visible");
-        } else if (tvRowSubZone === "reorder-down" && entry.dnBtn) {
-            entry.dnBtn.classList.add("tv-focus-visible");
-        } else if (tvRowSubZone === "assign" && entry?.col3?.style?.display !== "none") {
-            entry.col3.classList.add("tv-focus-visible");
-        }
-    });
-}
-
-function getSidebarFocusables() {
-    const panel = document.querySelector(".sidebar-panel.active");
-    if (!panel) return [];
-    return Array.from(panel.querySelectorAll(
-        ".cat-btn, .cat-section-hdr, .cat-sub-btn, .cat-add-grp-btn, .settings-btn, .settings-input, .settings-select"
-    )).filter(el => el.offsetParent !== null);
-}
-
-function tvFocusSidebarItem(idx) {
-    const items = getSidebarFocusables();
-    document.querySelectorAll(".tv-focus-visible").forEach(el => el.classList.remove("tv-focus-visible"));
-    if (!items.length) return;
-    const el = items[idx];
-    if (el) { el.classList.add("tv-focus-visible"); el.scrollIntoView({ block: "nearest" }); }
-}
-
-function tvFocusRow(idx) {
-    document.querySelectorAll(".tv-focus-visible").forEach(el => el.classList.remove("tv-focus-visible"));
-    document.querySelectorAll(".tv-row-active").forEach(el => el.classList.remove("tv-row-active"));
-    const ch = _vsChannels[idx];
-    if (!ch) return;
-
-    scrollTVRowIntoView(idx);
-    requestAnimationFrame(() => {
-        const sid = String(ch.stream_id);
-        const entry = rowCache.get(sid);
-        if (entry) {
-            entry.col1.classList.add("tv-focus-visible");
-            // Keep browser focus on the row itself so no child button can
-            // intercept the next OK/Enter keypress.
-            entry.row.focus({ preventScroll: true });
-        }
-    });
-}
-
-function scrollTVRowIntoView(idx) {
-    const wrap = document.getElementById("channel-list-wrap");
-    const rowTop    = idx * VS_ROW_H;
-    const rowBottom = rowTop + VS_ROW_H;
-    const viewTop   = wrap.scrollTop;
-    const viewBottom = viewTop + wrap.clientHeight;
-    if (rowTop < viewTop) wrap.scrollTop = rowTop - VS_ROW_H;
-    else if (rowBottom > viewBottom) wrap.scrollTop = rowBottom - wrap.clientHeight + VS_ROW_H;
-}
-
-
+};

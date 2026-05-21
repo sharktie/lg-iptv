@@ -8,6 +8,7 @@
   "icon": "icon.png",
   "largeIcon": "icon_large.png",
   "iconColor": "#000000",
+   "disableBackHistoryAPI": true,
   "requiredPermissions": [
     "com.webos.media"
   ]

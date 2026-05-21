@@ -288,7 +288,7 @@ html, body {
 #channel-list-wrap {
     flex: 1; overflow-y: auto; overflow-x: hidden; position: relative;
     scrollbar-width: thin; scrollbar-color: var(--bg4) transparent;
-    -webkit-overflow-scrolling: touch;
+    
 }
 #channel-list-wrap::-webkit-scrollbar { width: 6px; }
 #channel-list-wrap::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 4px; }
