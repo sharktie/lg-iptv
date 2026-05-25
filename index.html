@@ -11,7 +11,7 @@
     <div id="app">
         <aside id="sidebar">
             <div id="sidebar-header">
-                <div id="brand">📺 <span>LiveTV</span></div>
+                <div id="brand">📺 <span>IPTV <small>v1.0.11</small></span></div>
                 
                 <input id="search" type="text" placeholder="Search channels…" autocomplete="off" spellcheck="false" />
                 <div id="status">Connecting…</div>
@@ -27,15 +27,32 @@
 
             <div id="panel-settings" class="sidebar-panel">
                 <div class="settings-section">
-                    <div class="settings-section-title">Server Connection</div>
+                    <div class="settings-section-title">Source Type</div>
+                    <div class="source-toggle" id="cfg-source-type">
+                        <button class="source-toggle-btn active" data-value="xtream">Xtream Codes</button>
+                        <button class="source-toggle-btn" data-value="m3u">M3U Playlist</button>
+                    </div>
+                </div>
+
+                <div class="settings-section" id="cfg-section-xtream">
+                    <div class="settings-section-title">Xtream Codes</div>
                     <label class="settings-label">Server URL</label>
                     <input class="settings-input" id="cfg-server-url" type="text" placeholder="http://your-server.com" spellcheck="false" />
                     <label class="settings-label">Username</label>
                     <input class="settings-input" id="cfg-username" type="text" placeholder="username" spellcheck="false" autocomplete="off" />
                     <label class="settings-label">Password</label>
                     <input class="settings-input" id="cfg-password" type="password" placeholder="password" autocomplete="off" />
-                    <button class="settings-btn settings-btn-primary" id="cfg-save-btn">💾 Save &amp; Reconnect</button>
+                    <button class="settings-btn settings-btn-primary" id="cfg-save-btn">&#x1F4BE; Save &amp; Reconnect</button>
                     <div id="cfg-status" class="settings-status"></div>
+                </div>
+
+                <div class="settings-section" id="cfg-section-m3u" style="display:none">
+                    <div class="settings-section-title">M3U Playlist</div>
+                    <p class="settings-hint">Enter the URL of your M3U or M3U8 playlist. The playlist is cached for 4 hours.</p>
+                    <label class="settings-label">Playlist URL</label>
+                    <input class="settings-input" id="cfg-m3u-url" type="text" placeholder="http://example.com/playlist.m3u8" spellcheck="false" />
+                    <button class="settings-btn settings-btn-primary" id="cfg-m3u-save-btn">&#x1F4BE; Save &amp; Load</button>
+                    <div id="cfg-m3u-status" class="settings-status"></div>
                 </div>
 
                 <div class="settings-section">
@@ -114,6 +131,7 @@
     <script src="config/config.js"></script>
     <script src="assets/hls.min.js"></script>
     <script src="api/xtream.js"></script>
+    <script src="api/m3u.js"></script>
     <script src="js/player.js"></script>
     <script src="js/dpad.js"></script>
     <script src="js/app.js"></script>

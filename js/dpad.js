@@ -93,6 +93,17 @@ function onTVKeyDown(e) {
         case _KEY.LEFT: {
             e.preventDefault();
             if (isFs) { showOSD(); return; }
+            // Source-type toggle: LEFT moves to the other button
+            if (tvFocusZone === "settings") {
+                const focused = getSidebarFocusables()[tvSidebarIndex];
+                if (focused?.classList.contains("source-toggle-btn")) {
+                    const btns = Array.from(document.querySelectorAll("#cfg-source-type .source-toggle-btn"));
+                    const ci   = btns.indexOf(focused);
+                    if (ci > 0) {
+                        tvSidebarIndex--; tvFocusSidebarItem(tvSidebarIndex); return;
+                    }
+                }
+            }
             if (tvFocusZone === "channel-list") {
                 if      (tvRowSubZone === "reorder-down") { tvRowSubZone = "reorder-up";  tvFocusRowButtons(); }
                 else if (tvRowSubZone === "reorder-up") {
@@ -110,6 +121,17 @@ function onTVKeyDown(e) {
         case _KEY.RIGHT: {
             e.preventDefault();
             if (isFs) { showOSD(); return; }
+            // Source-type toggle: RIGHT moves to the other button
+            if (tvFocusZone === "settings") {
+                const focused = getSidebarFocusables()[tvSidebarIndex];
+                if (focused?.classList.contains("source-toggle-btn")) {
+                    const btns = Array.from(document.querySelectorAll("#cfg-source-type .source-toggle-btn"));
+                    const ci   = btns.indexOf(focused);
+                    if (ci < btns.length - 1) {
+                        tvSidebarIndex++; tvFocusSidebarItem(tvSidebarIndex); return;
+                    }
+                }
+            }
             if (tvFocusZone === "sidebar-cats" || tvFocusZone === "settings") {
                 setTVZone("channel-list");
             } else if (tvFocusZone === "channel-list") {
@@ -211,7 +233,7 @@ function getSidebarFocusables() {
     const panel = document.querySelector(".sidebar-panel.active");
     if (!panel) return [];
     return Array.from(panel.querySelectorAll(
-        ".cat-btn, .cat-section-hdr, .cat-sub-btn, .cat-add-grp-btn, .settings-btn, .settings-input, .settings-select"
+        ".cat-btn, .cat-section-hdr, .cat-sub-btn, .cat-add-grp-btn, .settings-btn, .settings-input, .settings-select, .source-toggle-btn"
     )).filter(el => el.offsetParent !== null);
 }
 

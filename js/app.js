@@ -151,6 +151,12 @@ function toggleChannelInGroup(gid, sid) {
 
 // ── App init ──────────────────────────────────────────────────────────────────
 
+// ── Source type ───────────────────────────────────────────────────────────────
+
+function getSourceType() {
+    return load("iptv_source_type", "xtream");
+}
+
 async function initApp() {
     const status = document.getElementById("status");
     const setStatus = (msg, err) => {
@@ -160,6 +166,47 @@ async function initApp() {
 
     epgCache = loadEpgDiskCache();
 
+    if (getSourceType() === "m3u") {
+        await _initAppM3U(setStatus);
+    } else {
+        await _initAppXtream(setStatus);
+    }
+}
+
+async function _initAppM3U(setStatus) {
+    let m3uCfg;
+    try { m3uCfg = await m3uLoadConfig(); }
+    catch (err) { setStatus("ERR: " + err.message, true); return; }
+
+    // Try disk cache first
+    const cached = m3uLoadCache();
+    if (cached) {
+        allChannels = cached.channels;
+        setStatus(`${allChannels.length} channels (cached)`);
+        _bootUI(cached.categories);
+        // Refresh in background
+        m3uFetchPlaylist(m3uCfg.playlist_url).then(({ channels, categories }) => {
+            allChannels = channels;
+            setStatus(`${allChannels.length} channels`);
+            m3uSaveCache(channels, categories);
+            renderCategories(categories);
+            applyFilters();
+        }).catch(() => {});
+        return;
+    }
+
+    try {
+        setStatus("Loading playlist…");
+        const { channels, categories } = await m3uGetChannelsAndCategories(m3uCfg);
+        if (!channels.length) { setStatus("ERR: 0 channels in playlist", true); return; }
+        allChannels = channels;
+        setStatus(`${allChannels.length} channels`);
+        m3uSaveCache(channels, categories);
+        _bootUI(categories);
+    } catch (err) { setStatus("ERR: " + err.message, true); }
+}
+
+async function _initAppXtream(setStatus) {
     setStatus("Loading config…");
     try { cfg = await xtreamLoadConfig(); }
     catch (err) { setStatus("ERR: " + err.message, true); return; }
@@ -225,7 +272,7 @@ function _bootUI(categories) {
 
 // ── Virtual scroll ────────────────────────────────────────────────────────────
 
-const VS_ROW_H    = 66;
+const VS_ROW_H    = 96;
 const VS_OVERSCAN = 5;
 
 let _vsChannels   = [];
@@ -401,7 +448,11 @@ async function loadEPGForCurrentCategory() {
     for (let i = 0; i < needed.length; i += BATCH) {
         if (epgLoadAbortKey !== myKey) return;
         await Promise.all(needed.slice(i, i + BATCH).map(async ch => {
-            try { epgCache[ch.stream_id] = await xtreamGetEPG(cfg, ch.stream_id); }
+            try {
+                epgCache[ch.stream_id] = ch._source === "m3u"
+                    ? await m3uGetEPG(ch.stream_id)
+                    : await xtreamGetEPG(cfg, ch.stream_id);
+            }
             catch { epgCache[ch.stream_id] = []; }
         }));
         if (epgLoadAbortKey !== myKey) return;
@@ -852,7 +903,8 @@ async function selectChannel(ch) {
     document.querySelectorAll(".tl-row").forEach(r => r.classList.toggle("selected", r.dataset.sid === String(ch.stream_id)));
     document.getElementById("preview-channel-name").textContent = ch.name || "Unknown";
     document.getElementById("pip-channel-name").textContent     = ch.name || "Unknown";
-    player.play(xtreamBuildLiveURL(cfg, ch.stream_id));
+    const playUrl = ch._source === "m3u" ? m3uBuildLiveURL(ch) : xtreamBuildLiveURL(cfg, ch.stream_id);
+    player.play(playUrl);
     setEPG("now", "Loading…", "", ""); setEPG("next", "—", "", "");
     document.getElementById("epg-bar-fill").style.width = "0%";
     showPreviewInfo();
@@ -860,7 +912,11 @@ async function selectChannel(ch) {
     let listings = epgCache[ch.stream_id];
     if (!listings) {
         epgCache[ch.stream_id] = null;
-        try { listings = await xtreamGetEPG(cfg, ch.stream_id); } catch { listings = []; }
+        try {
+            listings = ch._source === "m3u"
+                ? await m3uGetEPG(ch.stream_id)
+                : await xtreamGetEPG(cfg, ch.stream_id);
+        } catch { listings = []; }
         epgCache[ch.stream_id] = listings;
         patchEpgStrip(ch.stream_id); scheduleEpgSave();
     }
@@ -1040,15 +1096,54 @@ function initSettingsTabs() {
 }
 
 function populateSettingsForm() {
-    const stored = load("iptv_custom_config", null) || window.IPTV_CONFIG || {};
+    const stored     = load("iptv_custom_config", null) || window.IPTV_CONFIG || {};
+    const sourceType = getSourceType();
+    _toggleSourceSections(sourceType);
     document.getElementById("cfg-server-url").value = stored.server_url || "";
     document.getElementById("cfg-username").value   = stored.username   || "";
     document.getElementById("cfg-password").value   = stored.password   || "";
     document.getElementById("cfg-epg-url").value    = load("iptv_custom_epg_url", "");
     document.getElementById("cfg-epg-match").value  = load("iptv_custom_epg_match", "tvg-id");
+    const m3uStored = load("iptv_m3u_config", null) || window.IPTV_M3U_CONFIG || {};
+    document.getElementById("cfg-m3u-url").value    = m3uStored.playlist_url || "";
+}
+
+function _toggleSourceSections(type) {
+    document.querySelectorAll("#cfg-source-type .source-toggle-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.value === type);
+    });
+    document.getElementById("cfg-section-xtream").style.display = type === "xtream" ? "" : "none";
+    document.getElementById("cfg-section-m3u").style.display    = type === "m3u"    ? "" : "none";
 }
 
 function initSettingsPanel() {
+    // Source type toggle buttons — update sections and persist immediately
+    document.querySelectorAll("#cfg-source-type .source-toggle-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            save("iptv_source_type", btn.dataset.value);
+            _toggleSourceSections(btn.dataset.value);
+        });
+    });
+
+    // M3U save & load
+    document.getElementById("cfg-m3u-save-btn").addEventListener("click", async () => {
+        const url = document.getElementById("cfg-m3u-url").value.trim();
+        if (!url) { setSettingsStatus("cfg-m3u-status", "Please enter a playlist URL.", "err"); return; }
+        const m3uCfg = { playlist_url: url };
+        save("iptv_m3u_config", m3uCfg);
+        save("iptv_source_type", "m3u");
+        window.IPTV_M3U_CONFIG = m3uCfg;
+        m3uClearCache();
+        setSettingsStatus("cfg-m3u-status", "Saved! Loading playlist…", "ok");
+        setTimeout(() => {
+            rowCache.clear(); allChannels = []; epgCache = {};
+            document.getElementById("categories").innerHTML = "";
+            document.getElementById("channel-list").innerHTML = "";
+            initApp();
+            document.getElementById("tab-channels").click();
+        }, 400);
+    });
+
     document.getElementById("cfg-save-btn").addEventListener("click", async () => {
         const newCfg = {
             server_url: document.getElementById("cfg-server-url").value.trim().replace(/\/$/, ""),
@@ -1059,6 +1154,7 @@ function initSettingsPanel() {
             setSettingsStatus("cfg-status", "Please fill in all fields.", "err"); return;
         }
         save("iptv_custom_config", newCfg);
+        save("iptv_source_type", "xtream");
         setSettingsStatus("cfg-status", "Saved! Reconnecting…", "ok");
         try { localStorage.removeItem("iptv_ch_v2"); localStorage.removeItem("iptv_cat_v2"); } catch {}
         window.IPTV_CONFIG = newCfg;
