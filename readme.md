@@ -1,69 +1,60 @@
+LG-IPTV
 
-#Free IPTV Player for WebOS#
-
-Hi everyone. i made this iptv player in my free time as the current options for WebOS were really limited.
+A fast, lightweight IPTV player built for webOS TVs by LG.
+Supports M3U playlists and Xtream API with a clean and simple interface.
 
 Features
 Fast and lightweight IPTV client for webOS
-Supports M3U playlists and Xtream API
-Channel list navigation
-Remote-friendly interface
-No bundled channels (requires your own playlist/service)
-Supports installation through Dev Mode or Homebrew
-
+Supports M3U playlists and Xtream Codes API
+Clean and remote-friendly UI
+No ads, no bundled channels
+Auto-update support when installed via Homebrew
+Manual Dev Mode sideloading supported
 Installation
 Option 1 — Install via Homebrew (Recommended)
 
-Add the repo:
+Add the repository:
 
-https://raw.githubusercontent.com/sharktie/lg-iptv/main/webosbrew/index.json
+hb add-repo sharktie/lg-iptv https://sharktie.github.io/lg-iptv/index.json
 
-LG-IPTV will appear in your Homebrew app list.
+Install the app:
+
+hb install sharktie/lg-iptv
+
+Homebrew repo file (for reference):
+index.json (raw)
 
 Option 2 — Manual Installation (Dev Mode)
 Download the latest .ipk file:
-LG-IPTV Latest Release
-Enable Developer Mode on your LG TV (instructions below).
+LG‑IPTV Latest Release
+Enable Developer Mode on your LG TV (see below).
 Install webOS Dev Manager on your computer:
 webOS Dev Manager
-Connect your PC to the TV.
-Click Install App and select the downloaded .ipk.
+Connect to your TV via Dev Manager.
+Click Install App and select the .ipk file.
 How to Enable Developer Mode on Your LG TV
-1. Install the Developer Mode App
-
-On your TV, open the LG Content Store and install Developer Mode.
-
-2. Sign In
-
-Open the app and sign in with your LG Developer account.
-(Create one if needed: LG Developer Site)
-
-3. Enable Dev Mode
-
-Inside the app, switch Developer Mode ON.
-Your TV will reboot.
-
-4. Get Your TV’s Local IP
-
-Reopen the Developer Mode app and note the IP address listed.
-
-5. Connect via Dev Manager
-
-On your computer, open Dev Manager and add your TV using that IP.
-You can now sideload .ipk files.
-
+Open the LG Content Store → install Developer Mode app.
+Sign in with your LG Developer account:
+LG Developer Site
+Open the app → enable Developer Mode → TV will reboot.
+After reboot, open Developer Mode again and note your TV’s IP address.
+Open Dev Manager on your PC → add your TV using that IP.
+You can now sideload .ipk apps.
 Configuration
-Open LG-IPTV on your TV
-Enter your M3U URL or Xtream credentials
-Channels will load automatically
-Navigate with the LG remote
+Launch LG-IPTV on your TV.
+Enter your M3U URL or Xtream API credentials.
+Your channels will load automatically.
 
-Your IPTV service is not included — you must provide your own playlist/service.
+(No IPTV service is included — you must provide your own playlist/service.)
 
 Supported IPTV Formats
 M3U / M3U8
 Xtream Codes API
+Repository
 
-Hop in the discord if you have any bugs/need support or want to request any features
+GitHub Repository
 
-https://discord.gg/2UmPGtWcMX
+Community / Support
+
+Join the Discord server for support, feedback, and updates:
+[LG‑IPTV Discord](https://discord.gg/2UmPGtWcMX)
