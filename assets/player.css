@@ -1,0 +1,270 @@
+/* ═══════════════════════════════════════════════════════════════════
+   player.css — Live TV PiP/fullscreen + VOD standalone player
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════════════════════════════
+   SHARED — PiP wrap & video element
+   ══════════════════════════════════════════════════════════════════════ */
+#pip-wrap {
+    width: var(--pip-w); height: var(--pip-h);
+    background: #000; border-radius: var(--radius);
+    border: 2px solid var(--bg4); overflow: hidden;
+    flex-shrink: 0; position: relative;
+    -webkit-transform: translateZ(0); transform: translateZ(0);
+}
+#pip-wrap:hover { border-color: var(--bg5); }
+#pip-wrap:-webkit-full-screen { width: 100vw; height: 100vh; border-radius: 0; border: none; outline: none; }
+#pip-wrap:fullscreen           { width: 100vw; height: 100vh; border-radius: 0; border: none; outline: none; }
+#pip-wrap.pip-fullscreen-active { width: 100vw; height: 100vh; border-radius: 0; border: none; outline: none; }
+
+#player { width: 100%; height: 100%; display: block; object-fit: contain; }
+
+#player-msg {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.7); color: var(--text-dim); font-size: 20px; pointer-events: none;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   LIVE TV — PiP bar (channel name + fullscreen button)
+   ══════════════════════════════════════════════════════════════════════ */
+#pip-bar {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px; background: linear-gradient(transparent, rgba(0,0,0,0.92));
+    opacity: 0.85;
+}
+#pip-wrap:hover #pip-bar { opacity: 1; }
+
+#pip-channel-name {
+    font-size: 18px; font-weight: 600; color: #fff;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px;
+}
+#pip-fullscreen-btn {
+    background: rgba(255,255,255,0.2); border: none; color: #fff;
+    font-size: 24px; width: 46px; height: 46px; border-radius: 8px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+#pip-fullscreen-btn:hover,
+#pip-fullscreen-btn.tv-focus-visible { background: var(--accent); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   LIVE TV — Fullscreen OSD (EPG / channel info)
+   ══════════════════════════════════════════════════════════════════════ */
+#fs-osd {
+    position: absolute; inset: 0; pointer-events: none;
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 0; z-index: 20;
+    opacity: 0; transition: opacity 0.3s ease;
+}
+#fs-osd.osd-visible { opacity: 1; }
+#fs-osd.osd-hidden  { opacity: 0; }
+
+#fs-osd-top {
+    background: linear-gradient(to bottom, rgba(0,0,0,0.82) 0%, transparent 100%);
+    padding: 28px 32px 48px;
+}
+#fs-osd-channel {
+    font-size: 2.2em; font-weight: 700; color: #fff;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#fs-osd-bottom {
+    background: linear-gradient(to top, rgba(0,0,0,0.88) 0%, transparent 100%);
+    padding: 48px 32px 28px; display: flex; flex-direction: column; gap: 10px;
+}
+#fs-osd-epg-row,
+#fs-osd-epg-row2 { display: flex; align-items: center; gap: 14px; }
+#fs-osd-epg-row2 { opacity: 0.75; }
+
+.fs-osd-badge {
+    font-size: 0.72em; font-weight: 700; padding: 4px 9px; border-radius: 4px;
+    flex-shrink: 0; letter-spacing: 0.04em;
+}
+.fs-osd-badge.now  { background: var(--accent); color: #fff; }
+.fs-osd-badge.next { background: rgba(255,255,255,0.18); color: rgba(255,255,255,0.85); }
+
+#fs-osd-now-title {
+    font-size: 1.3em; font-weight: 600; color: #fff;
+    text-shadow: 0 1px 6px rgba(0,0,0,0.7);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;
+}
+#fs-osd-next-title {
+    font-size: 1.05em; font-weight: 500; color: rgba(255,255,255,0.85);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;
+}
+#fs-osd-now-time,
+#fs-osd-next-time { font-size: 0.95em; color: rgba(255,255,255,0.65); flex-shrink: 0; }
+
+#fs-osd-bar-wrap {
+    height: 4px; background: rgba(255,255,255,0.2); border-radius: 3px;
+    overflow: hidden; margin-top: 4px;
+}
+#fs-osd-bar-fill {
+    height: 100%; background: var(--accent); border-radius: 3px;
+    transition: width 0.5s linear;
+}
+
+#pip-wrap.pip-fullscreen-active #fs-osd { font-size: clamp(12px, 1.8vw, 22px); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   VOD PLAYER PAGE — full-screen standalone player (player.html)
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Shell — overrides base.css body for the player page only.
+   Applied via .vod-player-page on <body> in player.html.        */
+.vod-player-page {
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #000;
+}
+
+/* On the player page the video fills the viewport, not pip-wrap */
+.vod-player-page #pip-wrap {
+    position: fixed; inset: 0;
+    width: 100% !important; height: 100% !important;
+    border-radius: 0 !important;
+    border: none !important;
+}
+
+/* player-msg needs fixed positioning when pip-wrap is full-screen */
+.vod-player-page #player-msg {
+    position: fixed;
+}
+
+/* ── VOD OSD wrapper ──────────────────────────────────────────────── */
+#osd {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    background:
+        linear-gradient(180deg, rgba(0,0,0,0.75) 0%, transparent 22%),
+        linear-gradient(0deg,   rgba(0,0,0,0.85) 0%, transparent 32%);
+    transition: opacity 0.35s ease;
+    pointer-events: none;
+}
+#osd.osd-hidden        { opacity: 0; pointer-events: none !important; }
+#osd:not(.osd-hidden)  { pointer-events: auto; opacity: 1; }
+
+/* ── VOD OSD top bar ──────────────────────────────────────────────── */
+#osd-top {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 28px 36px 0;
+}
+
+#player-title {
+    font-size: 22px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.8);
+    max-width: calc(100vw - 180px);
+}
+
+/* ── VOD OSD bottom bar ───────────────────────────────────────────── */
+#osd-bottom {
+    padding: 0 36px 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+/* ── Progress row ─────────────────────────────────────────────────── */
+#osd-progress-wrap {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+#osd-time-cur,
+#osd-time-dur {
+    font-size: 15px; font-weight: 700;
+    color: rgba(255,255,255,0.8);
+    min-width: 48px; flex-shrink: 0;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+    font-variant-numeric: tabular-nums;
+}
+#osd-time-dur { text-align: right; }
+
+#osd-seek-track {
+    flex: 1; height: 5px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 3px; position: relative;
+    cursor: pointer; transition: height 0.15s;
+}
+#osd:not(.osd-hidden) #osd-seek-track:hover { height: 8px; }
+
+#osd-seek-buf {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    background: rgba(255,255,255,0.25);
+    border-radius: 3px; width: 0%;
+    pointer-events: none;
+}
+#osd-seek-fill {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    background: var(--accent);
+    border-radius: 3px; width: 0%;
+    pointer-events: none;
+}
+#osd-seek-thumb {
+    position: absolute; top: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    width: 16px; height: 16px;
+    background: #fff; border-radius: 50%;
+    box-shadow: 0 0 6px rgba(0,0,0,0.6);
+    pointer-events: none;
+    transition: transform 0.15s; left: 0%;
+}
+#osd:not(.osd-hidden) #osd-seek-track:hover #osd-seek-thumb {
+    transform: translate(-50%, -50%) scale(1);
+}
+
+/* ── Controls row ─────────────────────────────────────────────────── */
+#osd-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+}
+
+/* ── Shared OSD button ────────────────────────────────────────────── */
+.osd-btn {
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 50%; color: #fff; cursor: pointer;
+    transition: background 0.15s, transform 0.12s, box-shadow 0.15s;
+    flex-shrink: 0; backdrop-filter: blur(6px);
+}
+.osd-btn:hover {
+    background: rgba(255,255,255,0.22);
+    transform: scale(1.08);
+}
+.osd-btn.tv-focus-visible {
+    background: rgba(229,0,30,0.35);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(229,0,30,0.5);
+    transform: scale(1.12);
+    outline: none;
+}
+
+#player-back-btn { width: 46px; height: 46px; }
+
+.osd-ctrl-btn { width: 52px; height: 52px; }
+
+.osd-ctrl-play {
+    width: 64px; height: 64px;
+    background: rgba(229,0,30,0.7) !important;
+    border-color: var(--accent) !important;
+}
+.osd-ctrl-play:hover          { background: var(--accent) !important; }
+.osd-ctrl-play.tv-focus-visible {
+    background: var(--accent) !important;
+    box-shadow: 0 0 0 4px rgba(229,0,30,0.55) !important;
+}

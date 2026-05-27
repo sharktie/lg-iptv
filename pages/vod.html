@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VOD — IPTV Player</title>
+    <meta name="theme-color" content="#080810" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="../assets/base.css" />
+    <link rel="stylesheet" href="../assets/vod.css" />
+</head>
+<body>
+
+<div id="vod-page">
+
+    <!-- ── Left: category sidebar ─────────────────────────────────── -->
+    <aside id="cat-sidebar">
+        <div id="cat-header">
+            <button id="back-btn" title="Back">
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                    <path d="M12 3L6 9L12 15" stroke="currentColor" stroke-width="2.2"
+                          stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </button>
+            <span id="cat-header-title">Movies</span>
+        </div>
+        <div id="cat-search-wrap">
+            <input id="cat-search" class="vod-search" type="text"
+                   placeholder="Search categories…" spellcheck="false" autocomplete="off" />
+        </div>
+        <ul id="cat-list" role="listbox" aria-label="Categories"></ul>
+    </aside>
+
+    <!-- ── Right: movie grid ──────────────────────────────────────── -->
+    <main id="vod-main">
+        <div id="vod-grid-header">
+            <span id="vod-cat-name">Select a category</span>
+            <span id="vod-count"></span>
+        </div>
+
+        <!-- Sort / filter chips -->
+        <div id="vod-filter-bar">
+            <button class="filter-chip active" data-sort="default">All</button>
+            <button class="filter-chip" data-sort="az">A–Z</button>
+            <button class="filter-chip" data-sort="rating">Top Rated</button>
+            <button class="filter-chip" data-sort="year">Newest</button>
+        </div>
+
+        <div id="vod-grid" role="list"></div>
+        <div id="vod-grid-fade"></div>
+
+        <div id="vod-loading" class="vod-spinner-wrap" style="display:none">
+            <div class="vod-spinner"></div>
+            <span>Loading…</span>
+        </div>
+        <div id="vod-empty"></div>
+    </main>
+
+</div>
+
+<!-- ── Detail overlay ─────────────────────────────────────────────── -->
+<div id="detail-overlay" hidden role="dialog" aria-modal="true" aria-label="Movie details">
+    <div id="detail-backdrop-img"></div>
+    <div id="detail-backdrop-scrim"></div>
+
+    <button id="detail-close" title="Close (Back)">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M2 2L14 14M14 2L2 14" stroke="currentColor" stroke-width="2.2"
+                  stroke-linecap="round"/>
+        </svg>
+    </button>
+
+    <div id="detail-box">
+        <div id="detail-poster-col">
+            <img id="detail-poster" src="" alt="" />
+        </div>
+        <div id="detail-info-col">
+            <h2 id="detail-title"></h2>
+            <div id="detail-meta-row">
+                <span id="detail-year"     class="detail-badge"></span>
+                <span id="detail-rating"   class="detail-badge detail-badge-gold"></span>
+                <span id="detail-duration" class="detail-badge"></span>
+                <span id="detail-genre"    class="detail-badge"></span>
+            </div>
+            <p id="detail-plot"></p>
+            <div id="detail-director-row">
+                <span class="detail-section-label">Director&nbsp;</span>
+                <span id="detail-director"></span>
+            </div>
+            <div id="detail-cast-row">
+                <span class="detail-section-label">Cast&nbsp;</span>
+                <span id="detail-cast"></span>
+            </div>
+            <div id="detail-actions">
+                <button id="detail-play-btn" class="detail-btn detail-btn-primary">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor">
+                        <path d="M5 3l12 6-12 6V3z"/>
+                    </svg>
+                    Play
+                </button>
+                <button id="detail-close-btn" class="detail-btn detail-btn-secondary">More Info</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="../config/config.js"></script>
+<script src="../js/vod.js"></script>
+</body>
+</html>

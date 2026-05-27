@@ -14,6 +14,11 @@ let timelineOffset   = 0;
 const rowCache       = new Map();
 
 
+// ── Settings stub (safe no-op if settings.js is removed) ─────────────────────
+if (typeof setSettingsStatus === "undefined") {
+    window.setSettingsStatus = function() {};
+}
+
 // ── Local storage helpers ─────────────────────────────────────────────────────
 
 function load(key, fallback) {
@@ -1076,128 +1081,6 @@ function mergeXMLTVIntoEpgCache() {
 }
 
 
-// ── Settings panel ────────────────────────────────────────────────────────────
-
-function initSettingsTabs() {
-    document.querySelectorAll(".sidebar-tab").forEach(tab => {
-        tab.addEventListener("click", () => {
-            document.querySelectorAll(".sidebar-tab").forEach(t => t.classList.remove("active"));
-            document.querySelectorAll(".sidebar-panel").forEach(p => p.classList.remove("active"));
-            tab.classList.add("active");
-            document.getElementById("panel-" + tab.dataset.tab).classList.add("active");
-            if (tab.dataset.tab === "settings") {
-                populateSettingsForm();
-                tvSidebarIndex = 0; setTVZone("settings");
-            } else {
-                tvSidebarIndex = 0; setTVZone("sidebar-cats");
-            }
-        });
-    });
-}
-
-function populateSettingsForm() {
-    const stored     = load("iptv_custom_config", null) || window.IPTV_CONFIG || {};
-    const sourceType = getSourceType();
-    _toggleSourceSections(sourceType);
-    document.getElementById("cfg-server-url").value = stored.server_url || "";
-    document.getElementById("cfg-username").value   = stored.username   || "";
-    document.getElementById("cfg-password").value   = stored.password   || "";
-    document.getElementById("cfg-epg-url").value    = load("iptv_custom_epg_url", "");
-    document.getElementById("cfg-epg-match").value  = load("iptv_custom_epg_match", "tvg-id");
-    const m3uStored = load("iptv_m3u_config", null) || window.IPTV_M3U_CONFIG || {};
-    document.getElementById("cfg-m3u-url").value    = m3uStored.playlist_url || "";
-}
-
-function _toggleSourceSections(type) {
-    document.querySelectorAll("#cfg-source-type .source-toggle-btn").forEach(btn => {
-        btn.classList.toggle("active", btn.dataset.value === type);
-    });
-    document.getElementById("cfg-section-xtream").style.display = type === "xtream" ? "" : "none";
-    document.getElementById("cfg-section-m3u").style.display    = type === "m3u"    ? "" : "none";
-}
-
-function initSettingsPanel() {
-    // Source type toggle buttons — update sections and persist immediately
-    document.querySelectorAll("#cfg-source-type .source-toggle-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-            save("iptv_source_type", btn.dataset.value);
-            _toggleSourceSections(btn.dataset.value);
-        });
-    });
-
-    // M3U save & load
-    document.getElementById("cfg-m3u-save-btn").addEventListener("click", async () => {
-        const url = document.getElementById("cfg-m3u-url").value.trim();
-        if (!url) { setSettingsStatus("cfg-m3u-status", "Please enter a playlist URL.", "err"); return; }
-        const m3uCfg = { playlist_url: url };
-        save("iptv_m3u_config", m3uCfg);
-        save("iptv_source_type", "m3u");
-        window.IPTV_M3U_CONFIG = m3uCfg;
-        m3uClearCache();
-        setSettingsStatus("cfg-m3u-status", "Saved! Loading playlist…", "ok");
-        setTimeout(() => {
-            rowCache.clear(); allChannels = []; epgCache = {};
-            document.getElementById("categories").innerHTML = "";
-            document.getElementById("channel-list").innerHTML = "";
-            initApp();
-            document.getElementById("tab-channels").click();
-        }, 400);
-    });
-
-    document.getElementById("cfg-save-btn").addEventListener("click", async () => {
-        const newCfg = {
-            server_url: document.getElementById("cfg-server-url").value.trim().replace(/\/$/, ""),
-            username:   document.getElementById("cfg-username").value.trim(),
-            password:   document.getElementById("cfg-password").value.trim(),
-        };
-        if (!newCfg.server_url || !newCfg.username || !newCfg.password) {
-            setSettingsStatus("cfg-status", "Please fill in all fields.", "err"); return;
-        }
-        save("iptv_custom_config", newCfg);
-        save("iptv_source_type", "xtream");
-        setSettingsStatus("cfg-status", "Saved! Reconnecting…", "ok");
-        try { localStorage.removeItem("iptv_ch_v2"); localStorage.removeItem("iptv_cat_v2"); } catch {}
-        window.IPTV_CONFIG = newCfg;
-        cfg = newCfg;
-        setTimeout(() => {
-            rowCache.clear(); allChannels = []; epgCache = {};
-            document.getElementById("categories").innerHTML = "";
-            document.getElementById("channel-list").innerHTML = "";
-            initApp();
-            document.getElementById("tab-channels").click();
-        }, 600);
-    });
-
-    document.getElementById("cfg-epg-load-btn").addEventListener("click", () => {
-        const url   = document.getElementById("cfg-epg-url").value.trim();
-        const match = document.getElementById("cfg-epg-match").value;
-        if (!url) { setSettingsStatus("epg-load-status", "Enter an XMLTV URL first.", "err"); return; }
-        save("iptv_custom_epg_url", url);
-        save("iptv_custom_epg_match", match);
-        setSettingsStatus("epg-load-status", "Loading XMLTV…", "");
-        loadCustomXMLTV(url, match);
-    });
-
-    document.getElementById("cfg-clear-cache-btn").addEventListener("click", () => {
-        try { localStorage.removeItem("iptv_ch_v2"); localStorage.removeItem("iptv_cat_v2"); } catch {}
-        setSettingsStatus("cfg-status", "Channel cache cleared.", "ok");
-    });
-
-    document.getElementById("cfg-clear-epg-btn").addEventListener("click", () => {
-        try { localStorage.removeItem("iptv_epg_v2"); localStorage.removeItem("iptv_xmltv_cache"); } catch {}
-        epgCache = {}; xmltvCache = {};
-        setSettingsStatus("epg-load-status", "EPG cache cleared.", "ok");
-    });
-}
-
-function setSettingsStatus(elId, msg, cls) {
-    const el = document.getElementById(elId);
-    if (!el) return;
-    el.textContent = msg;
-    el.className = "settings-status" + (cls ? " " + cls : "");
-}
-
-
 // ── Auto-updater ──────────────────────────────────────────────────────────────
 
 const MANIFEST_URL          = "https://github.com/sharktie/lg-iptv/releases/latest/download/manifest.json";
@@ -1349,8 +1232,6 @@ window.onload = function () {
     loadXMLTVFromCache();
 
     initVirtualScroll();
-    initSettingsTabs();
-    initSettingsPanel();
     initTVNavigation();
     initApp();
 

@@ -23,7 +23,8 @@ function initTVNavigation() {
             requestAnimationFrame(() => tvFocusRow(tvRowIndex));
             return;
         }
-        try { if (typeof webOS !== "undefined") webOS.platformBack(); } catch (_) {}
+        // Navigate back to homepage
+        window.location.href = "../index.html";
     });
 }
 
@@ -93,15 +94,12 @@ function onTVKeyDown(e) {
         case _KEY.LEFT: {
             e.preventDefault();
             if (isFs) { showOSD(); return; }
-            // Source-type toggle: LEFT moves to the other button
             if (tvFocusZone === "settings") {
                 const focused = getSidebarFocusables()[tvSidebarIndex];
                 if (focused?.classList.contains("source-toggle-btn")) {
                     const btns = Array.from(document.querySelectorAll("#cfg-source-type .source-toggle-btn"));
-                    const ci   = btns.indexOf(focused);
-                    if (ci > 0) {
-                        tvSidebarIndex--; tvFocusSidebarItem(tvSidebarIndex); return;
-                    }
+                    const ci = btns.indexOf(focused);
+                    if (ci > 0) { tvSidebarIndex--; tvFocusSidebarItem(tvSidebarIndex); return; }
                 }
             }
             if (tvFocusZone === "channel-list") {
@@ -121,15 +119,12 @@ function onTVKeyDown(e) {
         case _KEY.RIGHT: {
             e.preventDefault();
             if (isFs) { showOSD(); return; }
-            // Source-type toggle: RIGHT moves to the other button
             if (tvFocusZone === "settings") {
                 const focused = getSidebarFocusables()[tvSidebarIndex];
                 if (focused?.classList.contains("source-toggle-btn")) {
                     const btns = Array.from(document.querySelectorAll("#cfg-source-type .source-toggle-btn"));
-                    const ci   = btns.indexOf(focused);
-                    if (ci < btns.length - 1) {
-                        tvSidebarIndex++; tvFocusSidebarItem(tvSidebarIndex); return;
-                    }
+                    const ci = btns.indexOf(focused);
+                    if (ci < btns.length - 1) { tvSidebarIndex++; tvFocusSidebarItem(tvSidebarIndex); return; }
                 }
             }
             if (tvFocusZone === "sidebar-cats" || tvFocusZone === "settings") {

@@ -3,137 +3,54 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Live IPTV Player</title>
+    <title>IPTV Player</title>
     <meta name="theme-color" content="#0c0c0e" />
-    <link rel="stylesheet" href="assets/style.css" />
+    <link rel="stylesheet" href="assets/base.css" />
+    <link rel="stylesheet" href="assets/home.css" />
 </head>
 <body>
-    <div id="app">
-        <aside id="sidebar">
-            <div id="sidebar-header">
-                <div id="brand">📺 <span>IPTV <small>v1.0.11</small></span></div>
-                
-                <input id="search" type="text" placeholder="Search channels…" autocomplete="off" spellcheck="false" />
-                <div id="status">Connecting…</div>
-            </div>
-            <div id="sidebar-tabs">
-                <button class="sidebar-tab active" id="tab-channels" data-tab="channels">📺 Channels</button>
-                <button class="sidebar-tab" id="tab-settings" data-tab="settings">⚙ Settings</button>
+    <div id="home">
+        <div id="home-header">
+            <div id="home-brand">📺 <span>IPTV <small>v1.0.11</small></span></div>
+            <div id="home-date"></div>
+        </div>
+
+        <div id="home-grid">
+            <!-- Live TV — big tile -->
+            <div class="home-tile-main tile-livetv" id="tile-livetv" tabindex="-1">
+                <div class="home-tile-icon">📺</div>
+                <div class="home-tile-label">Live TV</div>
+                <div class="home-tile-sub">Watch live channels</div>
             </div>
 
-            <div id="panel-channels" class="sidebar-panel active">
-                <div id="categories"></div>
+            <!-- VOD — big tile -->
+            <div class="home-tile-main tile-vod" id="tile-vod" tabindex="-1">
+                <div class="home-tile-icon">🎬</div>
+                <div class="home-tile-label">VOD</div>
+                <div class="home-tile-sub">Movies &amp; TV shows</div>
             </div>
 
-            <div id="panel-settings" class="sidebar-panel">
-                <div class="settings-section">
-                    <div class="settings-section-title">Source Type</div>
-                    <div class="source-toggle" id="cfg-source-type">
-                        <button class="source-toggle-btn active" data-value="xtream">Xtream Codes</button>
-                        <button class="source-toggle-btn" data-value="m3u">M3U Playlist</button>
+            <!-- Small tiles column -->
+            <div class="home-tile-col">
+                <div class="home-tile-small tile-catchup" id="tile-catchup" tabindex="-1">
+                    <div class="home-tile-icon">⏮</div>
+                    <div class="home-tile-small-text">
+                        <div class="home-tile-label">Catch-up</div>
+                        <div class="home-tile-sub">Watch missed shows</div>
                     </div>
                 </div>
 
-                <div class="settings-section" id="cfg-section-xtream">
-                    <div class="settings-section-title">Xtream Codes</div>
-                    <label class="settings-label">Server URL</label>
-                    <input class="settings-input" id="cfg-server-url" type="text" placeholder="http://your-server.com" spellcheck="false" />
-                    <label class="settings-label">Username</label>
-                    <input class="settings-input" id="cfg-username" type="text" placeholder="username" spellcheck="false" autocomplete="off" />
-                    <label class="settings-label">Password</label>
-                    <input class="settings-input" id="cfg-password" type="password" placeholder="password" autocomplete="off" />
-                    <button class="settings-btn settings-btn-primary" id="cfg-save-btn">&#x1F4BE; Save &amp; Reconnect</button>
-                    <div id="cfg-status" class="settings-status"></div>
-                </div>
-
-                <div class="settings-section" id="cfg-section-m3u" style="display:none">
-                    <div class="settings-section-title">M3U Playlist</div>
-                    <p class="settings-hint">Enter the URL of your M3U or M3U8 playlist. The playlist is cached for 4 hours.</p>
-                    <label class="settings-label">Playlist URL</label>
-                    <input class="settings-input" id="cfg-m3u-url" type="text" placeholder="http://example.com/playlist.m3u8" spellcheck="false" />
-                    <button class="settings-btn settings-btn-primary" id="cfg-m3u-save-btn">&#x1F4BE; Save &amp; Load</button>
-                    <div id="cfg-m3u-status" class="settings-status"></div>
-                </div>
-
-                <div class="settings-section">
-                    <div class="settings-section-title">Custom EPG (XMLTV)</div>
-                    <p class="settings-hint">Provide an XMLTV URL to override or supplement your provider's EPG data.</p>
-                    <label class="settings-label">XMLTV URL</label>
-                    <input class="settings-input" id="cfg-epg-url" type="text" placeholder="http://example.com/epg.xml" spellcheck="false" />
-                    <label class="settings-label">Match channels by</label>
-                    <select class="settings-input settings-select" id="cfg-epg-match">
-                        <option value="tvg-id">tvg-id / epg_channel_id</option>
-                        <option value="name">Channel name</option>
-                    </select>
-                    <button class="settings-btn settings-btn-secondary" id="cfg-epg-load-btn">📥 Load EPG</button>
-                    <div id="epg-load-status" class="settings-status"></div>
-                </div>
-
-                <div class="settings-section">
-                    <div class="settings-section-title">Cache Management</div>
-                    <button class="settings-btn settings-btn-danger" id="cfg-clear-cache-btn">🗑 Clear Channel Cache</button>
-                    <button class="settings-btn settings-btn-danger" id="cfg-clear-epg-btn">🗑 Clear EPG Cache</button>
-                </div>
-            </div>
-        </aside>
-
-        <main id="main">
-            <div id="preview-bar">
-                <div id="preview-info">
-                    <div id="preview-channel-name">Select a channel</div>
-                    <div id="epg-panel">
-                        <div class="epg-block" id="epg-now-block">
-                            <div class="epg-badge now">NOW</div>
-                            <div class="epg-content">
-                                <div class="epg-title" id="epg-now-title">—</div>
-                                <div class="epg-time"  id="epg-now-time"></div>
-                                <div class="epg-desc"  id="epg-now-desc"></div>
-                                <div id="epg-bar"><div id="epg-bar-fill"></div></div>
-                            </div>
-                        </div>
-                        <div class="epg-block" id="epg-next-block">
-                            <div class="epg-badge next">NEXT</div>
-                            <div class="epg-content">
-                                <div class="epg-title" id="epg-next-title">—</div>
-                                <div class="epg-time"  id="epg-next-time"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div id="pip-wrap">
-                    <video id="player" autoplay playsinline></video>
-                    <div id="player-msg">Select a channel</div>
-                    <div id="pip-bar">
-                        <span id="pip-channel-name"></span>
-                        <button id="pip-fullscreen-btn" title="Fullscreen">⛶</button>
+                <div class="home-tile-small tile-settings" id="tile-settings" tabindex="-1">
+                    <div class="home-tile-icon">⚙</div>
+                    <div class="home-tile-small-text">
+                        <div class="home-tile-label">Settings</div>
+                        <div class="home-tile-sub">Configure your app</div>
                     </div>
                 </div>
             </div>
-
-            <div id="tl-header-bar">
-                <div id="tl-nav">
-                    <button class="tl-nav-btn" id="tl-prev">◀ 1h</button>
-                    <button class="tl-nav-btn" id="tl-now" >Now</button>
-                    <button class="tl-nav-btn" id="tl-next">1h ▶</button>
-                </div>
-                <div id="tl-time-header-wrap">
-                    <div id="tl-time-header"></div>
-                    <div id="tl-now-line"></div>
-                </div>
-            </div>
-
-            <div id="channel-list-wrap">
-                <div id="channel-list"></div>
-            </div>
-        </main>
+        </div>
     </div>
 
-    <script src="config/config.js"></script>
-    <script src="assets/hls.min.js"></script>
-    <script src="api/xtream.js"></script>
-    <script src="api/m3u.js"></script>
-    <script src="js/player.js"></script>
-    <script src="js/dpad.js"></script>
-    <script src="js/app.js"></script>
+    <script src="js/home.js"></script>
 </body>
 </html>

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Settings — IPTV Player</title>
+    <meta name="theme-color" content="#08090d" />
+    <link rel="stylesheet" href="../assets/base.css" />
+    <link rel="stylesheet" href="../assets/settings.css" />
+</head>
+<body>
+
+    <div id="settings-page">
+
+        <div class="ambient-glow glow-a"></div>
+        <div class="ambient-glow glow-b"></div>
+
+        <div id="settings-modal" role="dialog" aria-label="Settings">
+
+            <!-- Header -->
+            <div id="modal-header">
+                <button id="back-btn" title="Back">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M11 4L6 9L11 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+                <div id="modal-title">
+                    <span class="title-text">IPTV <em>Settings</em></span>
+                </div>
+            </div>
+
+            <!-- Tab strip -->
+            <div id="tab-strip" role="tablist">
+                <button class="tab-btn active" data-value="xtream" role="tab" aria-selected="true">Xtream Codes</button>
+                <button class="tab-btn" data-value="m3u" role="tab" aria-selected="false">M3U Playlist</button>
+                <button class="tab-btn" data-value="epg" role="tab" aria-selected="false">EPG</button>
+                <button class="tab-btn" data-value="cache" role="tab" aria-selected="false">Cache</button>
+            </div>
+
+            <!-- Panel: Xtream -->
+            <div class="settings-panel active" id="panel-xtream" role="tabpanel">
+                <div class="field-group">
+                    <label class="field-label" for="cfg-server-url">Server URL</label>
+                    <input class="settings-input" id="cfg-server-url" type="text"
+                           placeholder="http://your-server.com" spellcheck="false" />
+                </div>
+                <div class="field-row">
+                    <div class="field-group">
+                        <label class="field-label" for="cfg-username">Username</label>
+                        <input class="settings-input" id="cfg-username" type="text"
+                               placeholder="username" spellcheck="false" autocomplete="off" />
+                    </div>
+                    <div class="field-group">
+                        <label class="field-label" for="cfg-password">Password</label>
+                        <input class="settings-input" id="cfg-password" type="password"
+                               placeholder="password" autocomplete="off" />
+                    </div>
+                </div>
+                <button class="settings-btn settings-btn-primary" id="cfg-save-btn">Save &amp; Reconnect</button>
+                <div id="cfg-status" class="settings-status"></div>
+            </div>
+
+            <!-- Panel: M3U -->
+            <div class="settings-panel" id="panel-m3u" role="tabpanel">
+                <p class="panel-hint">Enter the URL of your M3U or M3U8 playlist. Playlists are cached for 4 hours.</p>
+                <div class="field-group">
+                    <label class="field-label" for="cfg-m3u-url">Playlist URL</label>
+                    <input class="settings-input" id="cfg-m3u-url" type="text"
+                           placeholder="http://example.com/playlist.m3u8" spellcheck="false" />
+                </div>
+                <button class="settings-btn settings-btn-primary" id="cfg-m3u-save-btn">Save &amp; Load</button>
+                <div id="cfg-m3u-status" class="settings-status"></div>
+            </div>
+
+            <!-- Panel: EPG -->
+            <div class="settings-panel" id="panel-epg" role="tabpanel">
+                <p class="panel-hint">Provide an XMLTV URL to override or supplement your provider's EPG data.</p>
+                <div class="field-group">
+                    <label class="field-label" for="cfg-epg-url">XMLTV URL</label>
+                    <input class="settings-input" id="cfg-epg-url" type="text"
+                           placeholder="http://example.com/epg.xml" spellcheck="false" />
+                </div>
+                <div class="field-group">
+                    <label class="field-label" for="cfg-epg-match">Match channels by</label>
+                    <select class="settings-input settings-select" id="cfg-epg-match">
+                        <option value="tvg-id">tvg-id / epg_channel_id</option>
+                        <option value="name">Channel name</option>
+                    </select>
+                </div>
+                <button class="settings-btn settings-btn-secondary" id="cfg-epg-load-btn">Save EPG Settings</button>
+                <div id="epg-load-status" class="settings-status"></div>
+            </div>
+
+            <!-- Panel: Cache -->
+            <div class="settings-panel" id="panel-cache" role="tabpanel">
+                <p class="panel-hint">Clear cached data to force a fresh fetch on next launch.</p>
+                <div class="cache-actions">
+                    <div class="cache-row">
+                        <div class="cache-info">
+                            <span class="cache-label">Channel Cache</span>
+                            <span class="cache-desc">Categories and channel list</span>
+                        </div>
+                        <button class="settings-btn settings-btn-danger" id="cfg-clear-cache-btn">Clear</button>
+                    </div>
+                    <div id="cfg-clear-ch-status" class="settings-status"></div>
+                    <div class="cache-row">
+                        <div class="cache-info">
+                            <span class="cache-label">EPG Cache</span>
+                            <span class="cache-desc">Programme guide data</span>
+                        </div>
+                        <button class="settings-btn settings-btn-danger" id="cfg-clear-epg-btn">Clear</button>
+                    </div>
+                    <div id="cfg-clear-epg-status" class="settings-status"></div>
+                </div>
+            </div>
+
+        </div><!-- /settings-modal -->
+    </div><!-- /settings-page -->
+
+    <script src="../config/config.js"></script>
+    <script src="../js/settings.js"></script>
+</body>
+</html>

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Live TV — IPTV Player</title>
+    <meta name="theme-color" content="#0c0c0e" />
+    <link rel="stylesheet" href="../assets/base.css" />
+    <link rel="stylesheet" href="../assets/livetv.css" />
+    <link rel="stylesheet" href="../assets/player.css" />
+</head>
+<body>
+    <div id="app">
+        <aside id="sidebar">
+            <div id="sidebar-header">
+                <div id="brand">
+                    <button id="home-btn" title="Home" onclick="history.back()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 9.5L12 3l9 6.5V21a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9.5z"/>
+                            <polyline points="9 22 9 12 15 12 15 22"/>
+                        </svg>
+                    </button>
+                    <span>IPTV <small>v1.0.11</small></span>
+                    <button id="settings-btn" title="Settings" onclick="location.href='../pages/settings.html'">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="3"/>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                        </svg>
+                    </button>
+                </div>
+                <input id="search" type="text" placeholder="Search channels…" autocomplete="off" spellcheck="false" />
+                <div id="status">Connecting…</div>
+            </div>
+            <div id="panel-channels" class="sidebar-panel active">
+                <div id="categories"></div>
+            </div>
+
+        </aside>
+
+        <main id="main">
+            <div id="preview-bar">
+                <div id="preview-info">
+                    <div id="preview-channel-name">Select a channel</div>
+                    <div id="epg-panel">
+                        <div class="epg-block" id="epg-now-block">
+                            <div class="epg-badge now">NOW</div>
+                            <div class="epg-content">
+                                <div class="epg-title" id="epg-now-title">—</div>
+                                <div class="epg-time"  id="epg-now-time"></div>
+                                <div class="epg-desc"  id="epg-now-desc"></div>
+                                <div id="epg-bar"><div id="epg-bar-fill"></div></div>
+                            </div>
+                        </div>
+                        <div class="epg-block" id="epg-next-block">
+                            <div class="epg-badge next">NEXT</div>
+                            <div class="epg-content">
+                                <div class="epg-title" id="epg-next-title">—</div>
+                                <div class="epg-time"  id="epg-next-time"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="pip-wrap">
+                    <video id="player" autoplay playsinline></video>
+                    <div id="player-msg">Select a channel</div>
+                    <div id="pip-bar">
+                        <span id="pip-channel-name"></span>
+                        <button id="pip-fullscreen-btn" title="Fullscreen">⛶</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tl-header-bar">
+                <div id="tl-nav">
+                    <button class="tl-nav-btn" id="tl-prev">◀ 1h</button>
+                    <button class="tl-nav-btn" id="tl-now">Now</button>
+                    <button class="tl-nav-btn" id="tl-next">1h ▶</button>
+                </div>
+                <div id="tl-time-header-wrap">
+                    <div id="tl-time-header"></div>
+                    <div id="tl-now-line"></div>
+                </div>
+            </div>
+
+            <div id="channel-list-wrap">
+                <div id="channel-list"></div>
+            </div>
+        </main>
+    </div>
+
+    <script src="../config/config.js"></script>
+    <script src="../assets/hls.min.js"></script>
+    <script src="../api/xtream.js"></script>
+    <script src="../api/m3u.js"></script>
+    <script src="../js/player.js"></script>
+    <script src="../js/dpad.js"></script>
+    <script src="../js/app.js"></script>
+</body>
+</html>

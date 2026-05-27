@@ -1,0 +1,31 @@
+/* ── Coming soon page ────────────────────────────────────────────────────────── */
+#coming-soon {
+    display: flex; flex-direction: column;
+    height: 100vh; width: 100vw; overflow: hidden;
+    background: var(--bg);
+    align-items: center; justify-content: center;
+}
+
+#back-btn {
+    position: fixed; top: 40px; left: 50px;
+    background: var(--bg3); border: var(--border);
+    border-radius: var(--radius); color: var(--text-dim);
+    font-size: 20px; padding: 14px 28px;
+    cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+#back-btn:hover,
+#back-btn.tv-focus-visible {
+    background: var(--bg4); color: var(--text);
+    border-color: var(--accent);
+    outline: 3px solid var(--accent); outline-offset: 2px;
+}
+
+#cs-content {
+    display: flex; flex-direction: column;
+    align-items: center; gap: 20px;
+    text-align: center;
+}
+
+#cs-icon  { font-size: 96px; line-height: 1; opacity: 0.6; }
+#cs-title { font-size: 48px; font-weight: 700; color: var(--text); }
+#cs-sub   { font-size: 26px; color: var(--text-dim); }

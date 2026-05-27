@@ -1,0 +1,75 @@
+/* ── Reset & box model ───────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Design tokens ───────────────────────────────────────────────────────────── */
+:root {
+    --accent:     #e5001e;
+    --accent-dim: #b0001a;
+    --gold:       #f5c518;
+    --gold-dim:   #c9990a;
+    --bg:         #0c0c0e;
+    --bg2:        #131316;
+    --bg3:        #1b1b20;
+    --bg4:        #242428;
+    --bg5:        #2e2e34;
+    --text:       #f0f0f5;
+    --text-dim:   #80808c;
+    --text-faint: #4a4a56;
+    --sidebar-w:  420px;
+    --pip-w:      620px;
+    --pip-h:      349px;
+    --logo-w:     84px;
+    --name-w:     260px;
+    --row-h:      96px;
+    --radius:     10px;
+    --border:     1px solid #22222a;
+    --focus-ring: 0 0 0 3px var(--accent);
+}
+
+/* ── Base ─────────────────────────────────────────────────────────────────────── */
+html, body {
+    height: 100%; overflow: hidden;
+    background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, 'LG Display', sans-serif;
+    font-size: 22px;
+}
+
+*:focus:not(:focus-visible) { outline: none; }
+*:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* ── D-pad input active state (shared) ───────────────────────────────────────── */
+.tv-input-active {
+    border-color: var(--gold) !important;
+    box-shadow: 0 0 0 3px rgba(197,153,10,0.35) !important;
+    outline: none !important;
+}
+
+/* ── Modals (shared) ─────────────────────────────────────────────────────────── */
+.modal-overlay {
+    position: fixed; inset: 0; z-index: 700;
+    background: rgba(0,0,0,0.7);
+    display: flex; align-items: center; justify-content: center;
+}
+.modal-box {
+    background: var(--bg3); border: var(--border);
+    border-radius: 14px; padding: 34px 36px;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.7); min-width: 480px; max-width: 580px; width: 90%;
+}
+.modal-heading { font-size: 22px; font-weight: 700; margin-bottom: 22px; }
+.modal-input {
+    width: 100%; padding: 16px 18px;
+    background: var(--bg4); border: var(--border);
+    border-radius: var(--radius); color: var(--text);
+    font-size: 20px; outline: none; margin-bottom: 22px;
+}
+.modal-input:focus { border-color: var(--gold); }
+.modal-btns { display: flex; gap: 12px; justify-content: flex-end; }
+.modal-btn {
+    padding: 16px 34px; border-radius: var(--radius);
+    font-size: 19px; font-weight: 600; cursor: pointer;
+    background: var(--bg5); border: var(--border); color: var(--text-dim);
+}
+.modal-btn:hover, .modal-btn.tv-focus-visible { background: var(--bg4); color: var(--text); }
+.modal-btn-ok       { background: var(--gold-dim); border-color: var(--gold-dim); color: #fff; }
+.modal-btn-ok:hover { background: var(--gold); border-color: var(--gold); }
+.modal-btn.tv-focus-visible { outline: 3px solid var(--gold) !important; outline-offset: 2px !important; }
