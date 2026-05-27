@@ -1,5 +1,5 @@
 
-##Free IPTV Player for WebOS##
+#Free IPTV Player for WebOS#
 
 Hi everyone. i made this iptv player in my free time as the current options for WebOS were really limited.
 
@@ -16,7 +16,7 @@ Option 1 — Install via Homebrew (Recommended)
 
 Add the repo:
 
-sharktie/lg-iptv https://sharktie.github.io/lg-iptv/index.json
+https://raw.githubusercontent.com/sharktie/lg-iptv/main/webosbrew/index.json
 
 LG-IPTV will appear in your Homebrew app list.
 
@@ -63,3 +63,7 @@ Your IPTV service is not included — you must provide your own playlist/service
 Supported IPTV Formats
 M3U / M3U8
 Xtream Codes API
+
+Hop in the discord if you have any bugs/need support or want to request any features
+
+https://discord.gg/2UmPGtWcMX
