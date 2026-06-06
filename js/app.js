@@ -240,6 +240,8 @@ async function _initAppXtream(setStatus) {
     try {
         const login = await xtreamLogin(cfg);
         if (!login) { setStatus("ERR: Login failed — check credentials", true); return; }
+        // Update cfg with the resolved server_url (the URL that actually worked)
+        cfg = login.cfg;
     } catch (err) { setStatus("ERR: " + err.message, true); return; }
 
     try {
@@ -1226,8 +1228,28 @@ function installUpdate(ipkUrl, onProgress) {
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 
 window.onload = function () {
-    const savedCfg = load("iptv_custom_config", null);
-    if (savedCfg && savedCfg.server_url) window.IPTV_CONFIG = savedCfg;
+    // ── Load active profile into IPTV_CONFIG ──────────────────────────────────
+    // Prefer the profiles system; fall back to legacy iptv_custom_config.
+    (function loadActiveProfile() {
+        const profiles = load("iptv_profiles", null);
+        if (profiles && profiles.length) {
+            const activeId = load("iptv_active_profile", null);
+            const profile  = (activeId && profiles.find(p => p.id === activeId)) || profiles[0];
+            if (profile) {
+                const resolvedUrl = load("iptv_active_resolved_url", null);
+                window.IPTV_CONFIG = {
+                    server_url:  resolvedUrl || profile.server_urls[0] || "",
+                    server_urls: profile.server_urls || [],
+                    username:    profile.username || "",
+                    password:    profile.password || "",
+                };
+                return;
+            }
+        }
+        // Legacy fallback
+        const savedCfg = load("iptv_custom_config", null);
+        if (savedCfg && savedCfg.server_url) window.IPTV_CONFIG = savedCfg;
+    }());
 
     loadXMLTVFromCache();
 

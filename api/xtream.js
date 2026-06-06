@@ -1,26 +1,17 @@
-const _inFlight = {};
-
 function _fetchJSON(url, timeoutMs = 10000) {
-    if (_inFlight[url]) return _inFlight[url];
-    const p = (async () => {
-        for (let attempt = 0; attempt < 2; attempt++) {
-            const ctrl = new AbortController();
-            const tid  = setTimeout(() => ctrl.abort(), timeoutMs);
-            try {
-                const r = await fetch(url, { signal: ctrl.signal });
-                clearTimeout(tid);
-                if (!r.ok) throw new Error("HTTP " + r.status);
-                return await r.json();
-            } catch (err) {
-                clearTimeout(tid);
-                // Only retry on AbortError (timeout) — not on HTTP errors or JSON parse failures
-                if (attempt === 0 && err.name === "AbortError") continue;
-                throw err;
-            }
+    return (async () => {
+        const ctrl = new AbortController();
+        const tid  = setTimeout(() => ctrl.abort(), timeoutMs);
+        try {
+            const r = await fetch(url, { signal: ctrl.signal });
+            clearTimeout(tid);
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            return await r.json();
+        } catch (err) {
+            clearTimeout(tid);
+            throw err;
         }
-    })().finally(() => { delete _inFlight[url]; });
-    _inFlight[url] = p;
-    return p;
+    })();
 }
 
 function xtreamLoadConfig() {
@@ -28,10 +19,32 @@ function xtreamLoadConfig() {
     return Promise.reject(new Error("window.IPTV_CONFIG not set"));
 }
 
+/**
+ * Try each server URL in cfg.server_urls (or fall back to cfg.server_url for
+ * backwards-compatibility) until one responds successfully.
+ *
+ * Returns { cfg, data } where cfg.server_url is the working URL, or null if
+ * all URLs fail. Uses a short per-URL timeout so failures are fast.
+ */
 async function xtreamLogin(cfg) {
-    try {
-        return await _fetchJSON(`${cfg.server_url}/player_api.php?username=${cfg.username}&password=${cfg.password}`);
-    } catch (_) { return null; }
+    const urls = cfg.server_urls && cfg.server_urls.length
+        ? cfg.server_urls
+        : [cfg.server_url].filter(Boolean);
+
+    for (const url of urls) {
+        try {
+            const result = await _fetchJSON(
+                `${url}/player_api.php?username=${cfg.username}&password=${cfg.password}`,
+                8000  /* 8s per URL — fast enough to try several without hanging */
+            );
+            if (result) {
+                return { cfg: { ...cfg, server_url: url }, data: result };
+            }
+        } catch (_) {
+            /* This URL failed — try the next one */
+        }
+    }
+    return null;
 }
 
 async function xtreamGetLiveChannels(cfg) {

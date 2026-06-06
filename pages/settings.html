@@ -31,33 +31,100 @@
 
             <!-- Tab strip -->
             <div id="tab-strip" role="tablist">
-                <button class="tab-btn active" data-value="xtream" role="tab" aria-selected="true">Xtream Codes</button>
+                <button class="tab-btn active" data-value="profiles" role="tab" aria-selected="true">Profiles</button>
                 <button class="tab-btn" data-value="m3u" role="tab" aria-selected="false">M3U Playlist</button>
                 <button class="tab-btn" data-value="epg" role="tab" aria-selected="false">EPG</button>
                 <button class="tab-btn" data-value="cache" role="tab" aria-selected="false">Cache</button>
             </div>
 
-            <!-- Panel: Xtream -->
-            <div class="settings-panel active" id="panel-xtream" role="tabpanel">
-                <div class="field-group">
-                    <label class="field-label" for="cfg-server-url">Server URL</label>
-                    <input class="settings-input" id="cfg-server-url" type="text"
-                           placeholder="http://your-server.com" spellcheck="false" />
-                </div>
-                <div class="field-row">
-                    <div class="field-group">
-                        <label class="field-label" for="cfg-username">Username</label>
-                        <input class="settings-input" id="cfg-username" type="text"
-                               placeholder="username" spellcheck="false" autocomplete="off" />
+            <!-- ═══════════════════════════════════════════════════════════
+                 Panel: Profiles
+                 Two-column layout: profile list (left) + editor (right)
+                 ═══════════════════════════════════════════════════════════ -->
+            <div class="settings-panel active" id="panel-profiles" role="tabpanel">
+                <div id="profiles-layout">
+
+                    <!-- Left: profile list -->
+                    <div id="profiles-sidebar">
+                        <div id="profiles-list" role="listbox" aria-label="Profiles">
+                            <!-- populated by JS -->
+                        </div>
+                        <button class="settings-btn settings-btn-secondary" id="add-profile-btn">
+                            + New Profile
+                        </button>
                     </div>
-                    <div class="field-group">
-                        <label class="field-label" for="cfg-password">Password</label>
-                        <input class="settings-input" id="cfg-password" type="password"
-                               placeholder="password" autocomplete="off" />
-                    </div>
-                </div>
-                <button class="settings-btn settings-btn-primary" id="cfg-save-btn">Save &amp; Reconnect</button>
-                <div id="cfg-status" class="settings-status"></div>
+
+                    <!-- Right: editor -->
+                    <div id="profile-editor">
+
+                        <!-- Empty state -->
+                        <div id="editor-empty">
+                            <p>Select a profile to edit,<br>or create a new one.</p>
+                        </div>
+
+                        <!-- Edit form (hidden until a profile is selected) -->
+                        <div id="editor-form" hidden>
+
+                            <div id="editor-header">
+                                <div class="field-group" style="flex:1">
+                                    <label class="field-label" for="prof-name">Profile Name</label>
+                                    <input class="settings-input" id="prof-name" type="text"
+                                           placeholder="e.g. My IPTV Service" spellcheck="false" autocomplete="off" />
+                                </div>
+                                <button class="settings-btn settings-btn-danger" id="delete-profile-btn" title="Delete profile">
+                                    Delete
+                                </button>
+                            </div>
+
+                            <div class="field-row">
+                                <div class="field-group">
+                                    <label class="field-label" for="prof-username">Username</label>
+                                    <input class="settings-input" id="prof-username" type="text"
+                                           placeholder="username" spellcheck="false" autocomplete="off" />
+                                </div>
+                                <div class="field-group">
+                                    <label class="field-label" for="prof-password">Password</label>
+                                    <input class="settings-input" id="prof-password" type="password"
+                                           placeholder="password" autocomplete="off" />
+                                </div>
+                            </div>
+
+                            <!-- URL list -->
+                            <div id="url-section">
+                                <div class="field-label" style="margin-bottom:8px">Server URLs <span class="field-hint">(tried in order)</span></div>
+                                <div id="url-list">
+                                    <!-- URL rows injected by JS -->
+                                </div>
+                                <button class="settings-btn settings-btn-secondary" id="add-url-btn" style="margin-top:8px">
+                                    + Add URL
+                                </button>
+                            </div>
+
+                            <!-- EPG for this profile -->
+                            <div id="prof-epg-section">
+                                <div class="field-label" style="margin-bottom:8px">EPG (optional)</div>
+                                <div class="field-group" style="margin-bottom:10px">
+                                    <label class="field-label" for="prof-epg-url">XMLTV URL</label>
+                                    <input class="settings-input" id="prof-epg-url" type="text"
+                                           placeholder="http://example.com/epg.xml" spellcheck="false" />
+                                </div>
+                                <div class="field-group">
+                                    <label class="field-label" for="prof-epg-match">Match channels by</label>
+                                    <select class="settings-input settings-select" id="prof-epg-match">
+                                        <option value="tvg-id">tvg-id / epg_channel_id</option>
+                                        <option value="name">Channel name</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div id="editor-actions">
+                                <button class="settings-btn settings-btn-primary" id="save-profile-btn">Save &amp; Connect</button>
+                                <div id="profile-status" class="settings-status"></div>
+                            </div>
+
+                        </div><!-- /editor-form -->
+                    </div><!-- /profile-editor -->
+                </div><!-- /profiles-layout -->
             </div>
 
             <!-- Panel: M3U -->
@@ -72,9 +139,9 @@
                 <div id="cfg-m3u-status" class="settings-status"></div>
             </div>
 
-            <!-- Panel: EPG -->
+            <!-- Panel: EPG (global fallback) -->
             <div class="settings-panel" id="panel-epg" role="tabpanel">
-                <p class="panel-hint">Provide an XMLTV URL to override or supplement your provider's EPG data.</p>
+                <p class="panel-hint">Global EPG fallback used when no profile-specific EPG is set.</p>
                 <div class="field-group">
                     <label class="field-label" for="cfg-epg-url">XMLTV URL</label>
                     <input class="settings-input" id="cfg-epg-url" type="text"
@@ -118,6 +185,7 @@
     </div><!-- /settings-page -->
 
     <script src="../config/config.js"></script>
+    <script src="../api/xtream.js"></script>
     <script src="../js/settings.js"></script>
 </body>
 </html>
