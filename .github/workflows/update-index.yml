@@ -39,13 +39,19 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '16'
       - name: Install ares-cli
         run: npm install -g @webos-tools/cli
+      - name: Patch ares-cli rimraf (v6 compat)
+        run: |
+          PACKAGE_JS=$(npm root -g)/@webos-tools/cli/lib/package.js
+          # Replace the require line with a callback-compatible shim
+          # v6 rimraf is async/promise-only; the CLI uses old v3 rimraf(path, cb) signature
+          sed -i "s|rimraf = require('rimraf'),|rimraf = (p, cb) => require('rimraf').rimraf(p).then(() => cb(), cb),|" "$PACKAGE_JS"
+          echo "Patched: $(grep 'rimraf =' $PACKAGE_JS | head -1)"
       - name: Package IPK
         run: |
           ares-package --no-minify . --outdir ./dist
-
       # Compute SHA256 and generate manifest.json
       - name: Generate manifest.json
         run: |
