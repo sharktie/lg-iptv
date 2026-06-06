@@ -114,6 +114,8 @@
             panel.classList.toggle('active', panel.id === 'panel-' + value);
         });
         save('iptv_last_tab', value);
+        /* When switching away from profiles, the flat-panel handler takes over */
+        if (value !== 'profiles') _inProfileContent = false;
         rebuildFocusables();
     }
 
@@ -392,7 +394,7 @@
 
                     renderProfileList();
                     setStatus('profile-status', 'Connected — returning…', 'ok');
-                    setTimeout(function () { history.back(); }, 900);
+                    setTimeout(function () { tvGoBack('../index.html'); }, 900);
                 })
                 .catch(function (err) {
                     clearTimeout(tid);
@@ -418,7 +420,7 @@
         try { localStorage.removeItem('iptv_m3u_cache'); } catch (e) {}
         if (typeof IPTV_M3U_CONFIG !== 'undefined') IPTV_M3U_CONFIG = { playlist_url: url };
         setStatus('cfg-m3u-status', 'Saved — returning to Live TV…', 'ok');
-        setTimeout(function () { history.back(); }, 900);
+        setTimeout(function () { tvGoBack('../index.html'); }, 900);
     });
 
     /* ─────────────────────────────────────────────────────────────────────────
@@ -452,52 +454,147 @@
     });
 
     /* ─────────────────────────────────────────────────────────────────────────
-       Back button
+       Back / navigation helper
+       tvGoBack is defined in dpad.js on the main page; define it here as a
+       fallback so the settings page works even without dpad.js loaded.
        ───────────────────────────────────────────────────────────────────────── */
-    document.getElementById('back-btn').addEventListener('click', function () { history.back(); });
+    if (typeof tvGoBack !== 'function') {
+        window.tvGoBack = function (backUrl) {
+            if (backUrl) { window.location.href = backUrl; }
+            else if (typeof webOS !== 'undefined') { webOS.platformBack(); }
+        };
+    }
+    document.getElementById('back-btn').addEventListener('click', function () { tvGoBack('../index.html'); });
 
     /* ─────────────────────────────────────────────────────────────────────────
        D-pad navigation
        ─────────────────────────────────────────────────────────────────────────
-       Same architecture as before:
-       - All navigation on keydown (fast)
-       - Back handled on keyup (webOS keyboard dismiss timing)
-       - Track _inputEl to distinguish "close keyboard" from "go back"
+       Layout model:
+         Row 0  : back-btn
+         Row 1  : tab strip (LEFT/RIGHT navigates between tabs)
+         Row 2+ : panel content
+
+       Profiles panel is two-column:
+         Left column  — profile-items + add-profile-btn  (sidebar)
+         Right column — editor fields + buttons
+
+       LEFT/RIGHT on the profiles panel crosses between columns.
+       UP from the top of either column jumps to the tab strip.
+
+       Keyboard / Back timing:
+         - ENTER on an INPUT opens the on-screen keyboard (calls el.focus()).
+         - isInputFocused() is checked on every keydown to detect this state.
+         - All d-pad/Back keys while an input is focused close the keyboard first.
+         - Character keys pass through to the input as normal.
        ───────────────────────────────────────────────────────────────────────── */
     var KEY = { UP: 38, DOWN: 40, LEFT: 37, RIGHT: 39, ENTER: 13, BACK: 461 };
 
-    var focusables = [];
-    var focusIndex = 0;
-    var tabList    = [];
+    /* ── Focus state ──────────────────────────────────────────────────────── */
+    var focusables  = [];   /* flat list used for non-profile panels          */
+    var focusIndex  = 0;
+    var tabList     = [];
 
-    function rebuildFocusables() {
-        var backBtn     = document.getElementById('back-btn');
-        var activePanel = document.querySelector('.settings-panel.active');
+    /* Profiles panel state */
+    var _col          = 'sidebar'; /* 'sidebar' | 'editor' */
+    var _sidebarIdx   = 0;
+    var _editorRowIdx = 0;   /* which visual row in the editor */
+    var _editorColIdx = 0;   /* which item within that row (for .field-row) */
+    /* When true, dpad focus is inside the profiles panel content.
+       When false, focus has floated up to the tab strip / back-btn zone. */
+    var _inProfileContent = false;
 
-        tabList = Array.from(document.querySelectorAll('#tab-strip .tab-btn'));
+    /* No keyboard-open flag needed — we check document.activeElement directly.
+       This avoids all timing races with the webOS on-screen keyboard. */
 
-        var panelItems = [];
-        if (activePanel) {
-            /* For the profiles panel, collect in visual order:
-               sidebar items → add-profile-btn → editor fields */
-            if (activePanel.id === 'panel-profiles') {
-                var sidebarItems = Array.from(document.querySelectorAll('#profiles-list .profile-item'));
-                var addProfBtn   = document.getElementById('add-profile-btn');
-                var formEl       = document.getElementById('editor-form');
-                var editorItems  = formEl && !formEl.hidden
-                    ? Array.from(formEl.querySelectorAll('input, select, button'))
-                          .filter(function (el) { return !el.disabled; })
-                    : [];
-                panelItems = sidebarItems.concat([addProfBtn]).concat(editorItems);
-            } else {
-                panelItems = Array.from(activePanel.querySelectorAll('input, select, button'))
-                    .filter(function (el) { return !el.disabled; });
-            }
-        }
-
-        focusables = [backBtn].concat(tabList).concat(panelItems);
+    /* ── Focusable lists ──────────────────────────────────────────────────── */
+    function getSidebarItems() {
+        return Array.from(document.querySelectorAll('#profiles-list .profile-item'))
+            .concat([document.getElementById('add-profile-btn')]);
     }
 
+    // Returns the editor as an array of rows, where each row is an array of
+    // one or more focusable elements that sit side-by-side visually.
+    // Up/Down moves between rows; Left/Right moves within a row.
+    //
+    // Special grouping rules (in addition to .field-row):
+    //   #editor-header  → [prof-name input,  delete-profile-btn]  (name ←→ Delete)
+    //   .url-row        → [url input,         url-remove-btn]      (url  ←→ ×)
+    function getEditorRows() {
+        var formEl = document.getElementById('editor-form');
+        if (!formEl || formEl.hidden) return [];
+        var rows = [];
+        var seen = [];
+        function visible(el) { return !el.disabled && el.offsetParent !== null; }
+        var all = Array.from(formEl.querySelectorAll('input, select, button')).filter(visible);
+        all.forEach(function (el) {
+            if (seen.indexOf(el) !== -1) return;
+
+            // #editor-header: prof-name + delete-profile-btn are side-by-side
+            var editorHeader = el.closest('#editor-header');
+            if (editorHeader) {
+                var siblings = Array.from(editorHeader.querySelectorAll('input, select, button')).filter(visible);
+                siblings.forEach(function (s) { seen.push(s); });
+                rows.push(siblings);
+                return;
+            }
+
+            // .url-row: url input + × remove button are side-by-side
+            var urlRow = el.closest('.url-row');
+            if (urlRow) {
+                var siblings = Array.from(urlRow.querySelectorAll('input, select, button')).filter(visible);
+                siblings.forEach(function (s) { seen.push(s); });
+                rows.push(siblings);
+                return;
+            }
+
+            // .field-row: e.g. username / password pair
+            var fieldRow = el.closest('.field-row');
+            if (fieldRow) {
+                var siblings = Array.from(fieldRow.querySelectorAll('input, select, button')).filter(visible);
+                siblings.forEach(function (s) { seen.push(s); });
+                rows.push(siblings);
+                return;
+            }
+
+            seen.push(el);
+            rows.push([el]);
+        });
+        return rows;
+    }
+
+    // Flat list for any code that still needs it.
+    function getEditorItems() {
+        return getEditorRows().reduce(function (a, r) { return a.concat(r); }, []);
+    }
+
+    function getFlatPanelItems() {
+        /* For non-profile panels: all interactive elements in the active panel */
+        var activePanel = document.querySelector('.settings-panel.active');
+        if (!activePanel) return [];
+        return Array.from(activePanel.querySelectorAll('input, select, button'))
+            .filter(function (el) { return !el.disabled && el.offsetParent !== null; });
+    }
+
+    function isProfilesPanel() {
+        var p = document.querySelector('.settings-panel.active');
+        return p && p.id === 'panel-profiles';
+    }
+
+    function rebuildFocusables() {
+        tabList = Array.from(document.querySelectorAll('#tab-strip .tab-btn'));
+        var backBtn = document.getElementById('back-btn');
+
+        if (isProfilesPanel()) {
+            /* Profiles panel: focusables covers back-btn + tabs only.
+               Panel content is handled separately via _col/_sidebarIdx/_editorRowIdx. */
+            focusables = [backBtn].concat(tabList);
+        } else {
+            focusables = [backBtn].concat(tabList).concat(getFlatPanelItems());
+        }
+        focusIndex = Math.max(0, Math.min(focusables.length - 1, focusIndex));
+    }
+
+    /* ── Focus ring helpers ───────────────────────────────────────────────── */
     function clearFocusRing() {
         document.querySelectorAll('.tv-focus-visible').forEach(function (el) {
             el.classList.remove('tv-focus-visible');
@@ -513,85 +610,229 @@
         el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
 
-    /* ── Back / keyboard tracking ──────────────────────────────────────────── */
-    var _inputEl = null;
+    /* Apply focus within the profiles panel columns */
+    function applyProfileFocus() {
+        clearFocusRing();
+        var el;
+        if (_col === 'sidebar') {
+            var items = getSidebarItems();
+            if (!items.length) { _col = 'editor'; applyProfileFocus(); return; }
+            _sidebarIdx = Math.max(0, Math.min(items.length - 1, _sidebarIdx));
+            el = items[_sidebarIdx];
+        } else {
+            var rows = getEditorRows();
+            if (!rows.length) { _col = 'sidebar'; applyProfileFocus(); return; }
+            _editorRowIdx = Math.max(0, Math.min(rows.length - 1, _editorRowIdx));
+            var row = rows[_editorRowIdx];
+            _editorColIdx = Math.max(0, Math.min(row.length - 1, _editorColIdx));
+            el = row[_editorColIdx];
+        }
+        if (!el) return;
+        el.classList.add('tv-focus-visible');
+        el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
 
+    /* ── Keyboard open/close ─────────────────────────────────────────────── */
+    // openKeyboard: give real browser focus to an input → triggers webOS on-screen keyboard.
     function openKeyboard(el) {
-        _inputEl = el;
         el.focus();
     }
 
-    document.addEventListener('focusout', function (e) {
-        var tag = e.target ? e.target.tagName : '';
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
-            setTimeout(function () { _inputEl = null; }, 50);
+    // closeKeyboard: blur whatever input is focused → dismisses on-screen keyboard.
+    // Wrapped in requestAnimationFrame so webOS has time to process the dismiss
+    // before we re-apply the d-pad focus ring.
+    function closeKeyboard() {
+        var prev = document.activeElement;
+        if (prev) prev.blur();
+        requestAnimationFrame(function () {
+            if (isProfilesPanel()) {
+                applyProfileFocus();
+            } else {
+                applyFocus(focusIndex);
+            }
+        });
+    }
+
+    // isInputFocused: true when a text input has real browser focus.
+    function isInputFocused() {
+        var a = document.activeElement;
+        return !!(a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA'));
+    }
+
+    /* ── Tab navigation helpers ───────────────────────────────────────────── */
+    function jumpToActiveTab() {
+        _inProfileContent = false;
+        clearFocusRing();
+        var activeTab = tabList.find(function (b) { return b.classList.contains('active'); })
+                     || tabList[0];
+        if (activeTab) {
+            var idx = focusables.indexOf(activeTab);
+            if (idx === -1) { rebuildFocusables(); idx = focusables.indexOf(activeTab); }
+            focusIndex = idx;
+            activeTab.classList.add('tv-focus-visible');
+            activeTab.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }
-    });
+    }
 
-    window.addEventListener('keydown', function (e) {
-        var kc = e.keyCode || e.which;
+    function jumpIntoPanel() {
+        if (isProfilesPanel()) {
+            _inProfileContent = true;
+            _col = 'sidebar';
+            _sidebarIdx = 0;
+            applyProfileFocus();
+        } else {
+            /* First panel item is at index tabList.length + 1 (after back-btn) */
+            var firstItem = tabList.length + 1;
+            if (firstItem < focusables.length) applyFocus(firstItem);
+        }
+    }
 
-        if (_inputEl) {
-            if (kc !== KEY.BACK) return;
-            e.preventDefault();
+    /* ── Navigation handler ──────────────────────────────────────────────── */
+    /* Called directly from keydown, and also from setTimeout after closeKeyboard
+       so blur has time to complete before we move the focus ring. */
+    function handleNavKey(kc) {
+
+        /* Back — go back to homepage */
+        if (kc === KEY.BACK) {
+            tvGoBack('../index.html');
             return;
         }
 
-        if (kc === KEY.BACK) { e.preventDefault(); return; }
+        /* ── Profiles panel ─────────────────────────────────────────────── */
+        if (isProfilesPanel() && _inProfileContent) {
 
+            if (kc === KEY.UP) {
+                if (_col === 'sidebar') {
+                    if (_sidebarIdx === 0) { jumpToActiveTab(); }
+                    else { _sidebarIdx--; applyProfileFocus(); }
+                } else {
+                    if (_editorRowIdx === 0) { jumpToActiveTab(); }
+                    else {
+                        _editorRowIdx--;
+                        // Preserve column position (input vs × button) across rows.
+                        var eRows = getEditorRows();
+                        _editorColIdx = Math.min(_editorColIdx, eRows[_editorRowIdx].length - 1);
+                        applyProfileFocus();
+                    }
+                }
+                return;
+            }
+
+            if (kc === KEY.DOWN) {
+                if (_col === 'sidebar') {
+                    var sItems = getSidebarItems();
+                    if (_sidebarIdx < sItems.length - 1) { _sidebarIdx++; applyProfileFocus(); }
+                } else {
+                    var eRows = getEditorRows();
+                    if (_editorRowIdx < eRows.length - 1) {
+                        _editorRowIdx++;
+                        // Clamp col index to the new row's width — preserves which
+                        // column (input vs × button) the user was in.
+                        _editorColIdx = Math.min(_editorColIdx, eRows[_editorRowIdx].length - 1);
+                        applyProfileFocus();
+                    }
+                }
+                return;
+            }
+
+            if (kc === KEY.LEFT) {
+                if (_col === 'editor') {
+                    if (_editorColIdx > 0) {
+                        /* Move left within a side-by-side row (e.g. username → password) */
+                        _editorColIdx--;
+                        applyProfileFocus();
+                    } else {
+                        /* At leftmost item — cross to sidebar */
+                        _col = 'sidebar';
+                        applyProfileFocus();
+                    }
+                }
+                return;
+            }
+
+            if (kc === KEY.RIGHT) {
+                if (_col === 'sidebar') {
+                    if (getEditorRows().length > 0) { _col = 'editor'; _editorColIdx = 0; applyProfileFocus(); }
+                } else {
+                    var curRow = getEditorRows()[_editorRowIdx] || [];
+                    if (_editorColIdx < curRow.length - 1) {
+                        /* Move right within a side-by-side row (e.g. username → password) */
+                        _editorColIdx++;
+                        applyProfileFocus();
+                    }
+                }
+                return;
+            }
+
+            if (kc === KEY.ENTER) {
+                var el;
+                if (_col === 'sidebar') {
+                    el = getSidebarItems()[_sidebarIdx];
+                } else {
+                    var row = (getEditorRows()[_editorRowIdx] || []);
+                    el = row[_editorColIdx];
+                }
+                if (!el) return;
+                if (el.tagName === 'INPUT') { openKeyboard(el); }
+                else { el.click(); }
+                return;
+            }
+
+            return;
+        }
+
+        /* ── Tab strip / flat panel navigation ──────────────────────────── */
         var el = focusables[focusIndex];
 
         if (kc === KEY.UP) {
-            e.preventDefault();
-            /* If we're at the top of the panel items, jump to the tab strip */
-            var firstPanelItem = focusables[tabList.length + 1]; /* +1 for back-btn */
-            if (el === firstPanelItem) {
-                /* Find the active tab */
-                var activeTab = tabList.find(function (b) { return b.classList.contains('active'); });
-                var ati = focusables.indexOf(activeTab);
-                if (ati !== -1) { applyFocus(ati); return; }
+            if (tabList.indexOf(el) !== -1) {
+                applyFocus(0);
+            } else if (el === document.getElementById('back-btn')) {
+                /* already at top */
+            } else {
+                var firstPanelIdx = tabList.length + 1;
+                if (focusIndex === firstPanelIdx) {
+                    jumpToActiveTab();
+                } else {
+                    applyFocus(focusIndex - 1);
+                }
             }
-            applyFocus(focusIndex - 1);
             return;
         }
 
         if (kc === KEY.DOWN) {
-            e.preventDefault();
-            /* If on a tab, jump into panel */
-            if (tabList.indexOf(el) !== -1) {
-                var firstPanel = focusables[tabList.length + 1];
-                if (firstPanel) { applyFocus(focusables.indexOf(firstPanel)); return; }
+            if (el === document.getElementById('back-btn')) {
+                jumpToActiveTab();
+            } else if (tabList.indexOf(el) !== -1) {
+                jumpIntoPanel();
+            } else {
+                applyFocus(focusIndex + 1);
             }
-            applyFocus(focusIndex + 1);
             return;
         }
 
         if (kc === KEY.LEFT || kc === KEY.RIGHT) {
-            e.preventDefault();
             var dir = kc === KEY.RIGHT ? 1 : -1;
 
-            /* Navigate between tabs */
             if (tabList.indexOf(el) !== -1) {
                 var ci   = tabList.indexOf(el);
                 var next = ci + dir;
                 if (next >= 0 && next < tabList.length) {
                     tabList[next].click();
                     rebuildFocusables();
-                    applyFocus(focusables.indexOf(tabList[next]));
+                    clearFocusRing();
+                    tabList[next].classList.add('tv-focus-visible');
+                    focusIndex = focusables.indexOf(tabList[next]);
                 }
-                return;
-            }
-
-            /* Navigate within a field-row (username/password side-by-side) */
-            if (el) {
-                var row = el.closest('.field-row');
-                if (row) {
-                    var siblings = Array.from(row.querySelectorAll('input, select, button'))
+            } else if (el) {
+                var frow = el.closest('.field-row');
+                if (frow) {
+                    var fsiblings = Array.from(frow.querySelectorAll('input, select, button'))
                         .filter(function (n) { return focusables.indexOf(n) !== -1; });
-                    var sc = siblings.indexOf(el);
-                    var sn = sc + dir;
-                    if (sn >= 0 && sn < siblings.length) {
-                        applyFocus(focusables.indexOf(siblings[sn]));
+                    var fsi  = fsiblings.indexOf(el);
+                    var fsn  = fsi + dir;
+                    if (fsn >= 0 && fsn < fsiblings.length) {
+                        applyFocus(focusables.indexOf(fsiblings[fsn]));
                     }
                 }
             }
@@ -599,28 +840,47 @@
         }
 
         if (kc === KEY.ENTER) {
-            e.preventDefault();
             if (!el) return;
-            if (el.tagName === 'INPUT' || el.tagName === 'SELECT') {
+            if (el.tagName === 'INPUT') {
                 openKeyboard(el);
             } else {
                 el.click();
             }
             return;
         }
-    });
+    }
 
-    window.addEventListener('keyup', function (e) {
+    /* ── keydown ─────────────────────────────────────────────────────────── */
+    window.addEventListener('keydown', function (e) {
         var kc = e.keyCode || e.which;
-        if (kc !== KEY.BACK) return;
-        e.preventDefault();
-        if (_inputEl) {
-            _inputEl = null;
-            applyFocus(focusIndex);
-        } else {
-            history.back();
+
+        /* If a text input has real browser focus (on-screen keyboard is open),
+           any d-pad or back key should close the keyboard first.
+           Character keys pass through so the user can keep typing. */
+        if (isInputFocused()) {
+            var isNavKey = kc === KEY.UP || kc === KEY.DOWN ||
+                           kc === KEY.LEFT || kc === KEY.RIGHT ||
+                           kc === KEY.BACK || kc === KEY.ENTER;
+            if (isNavKey) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                closeKeyboard();
+                /* Back just closes the keyboard — don't navigate away */
+                if (kc !== KEY.BACK) {
+                    /* Wait for blur to settle before running navigation */
+                    var _kc = kc;
+                    setTimeout(function () { handleNavKey(_kc); }, 50);
+                }
+            }
+            /* All other keys (letters, numbers) pass through to the input */
+            return;
         }
-    });
+
+        /* Normal d-pad navigation */
+        e.preventDefault();
+        handleNavKey(kc);
+
+    }, true); /* capture=true — runs before any other listeners */
 
     /* ─────────────────────────────────────────────────────────────────────────
        Utility
@@ -638,8 +898,10 @@
        ───────────────────────────────────────────────────────────────────────── */
     renderProfileList();
     renderEditor();
-    activateTab(load('iptv_last_tab', 'profiles'));
+    var bootTab = load('iptv_last_tab', 'profiles');
+    _inProfileContent = (bootTab === 'profiles');
+    activateTab(bootTab);
     rebuildFocusables();
-    applyFocus(0);
+    if (_inProfileContent) { applyProfileFocus(); } else { applyFocus(0); }
 
 }());

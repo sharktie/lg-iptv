@@ -34,10 +34,10 @@ function _navigate(id) {
 
 function _handleKey(e) {
     const kc = e.keyCode || e.which;
-    // Back (webOS) or Backspace
-    if (kc === 461 || kc === 8) {
+
+    if (kc === 461) { // Back (webOS) — homepage is the root, so exit the app
         e.preventDefault();
-        try { if (typeof webOS !== "undefined") webOS.platformBack(); } catch (_) {}
+        tvGoBack(); // no URL → calls webOS.platformBack()
         return;
     }
     if (kc === 13) { // ENTER
@@ -90,5 +90,6 @@ window.addEventListener("load", () => {
     _updateDate();
 
     // Notify webOS
-    try { if (typeof webOSSystem !== "undefined") webOSSystem.notifyAppLoaded(); } catch (_) {}
+    webOSSystem.notifyAppLoaded();
 });
+

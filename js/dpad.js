@@ -9,22 +9,46 @@ let _fsEnterTimer     = null;
 let _ctxMenuIndex     = 0;
 let _assignPanelIndex = 0;
 
+// ── Back button ───────────────────────────────────────────────────────────────
+// Central back handler for all pages.
+// Call with a URL to navigate there, or with no argument to exit to Home.
+// Pages that need back navigation (e.g. settings, catchup) pass their return
+// URL; pages at the root of the app (e.g. index) pass nothing to exit.
+//
+// Usage:
+//   tvGoBack();                    // exit app → webOS Home / exit popup
+//   tvGoBack("../index.html");     // navigate back to homepage
+
+function tvGoBack(backUrl) {
+    if (backUrl) {
+        window.location.href = backUrl;
+    } else {
+        webOS.platformBack();
+    }
+}
+
+// Call this from any page that uses dpad.js to declare where Back should navigate.
+// If not called, Back exits the app via webOS.platformBack().
+//
+// Usage (at page init):  tvSetBackUrl("../index.html");
+function tvSetBackUrl(url) {
+    window._tvBackUrl = url;
+}
+
 function initTVNavigation() {
     window.addEventListener("keydown", onTVKeyDown, { capture: true, passive: false });
-    try { if (typeof webOSSystem !== "undefined") webOSSystem.notifyAppLoaded(); } catch (_) {}
+    webOSSystem.notifyAppLoaded();
 
-    // popstate fires when Back is pressed while assign panel is open
-    // (history entry was pushed in showAssignPanel).
+    // popstate fires when Back is pressed while the assign panel is open
+    // (a history entry was pushed in showAssignPanel so that one Back press
+    // closes the panel instead of leaving the page).
     window.addEventListener("popstate", () => {
         if (document.querySelector(".assign-panel")) {
             _assignHistoryPushed = false;
             closeAssignPanels();
             tvRowSubZone = "row";
             requestAnimationFrame(() => tvFocusRow(tvRowIndex));
-            return;
         }
-        // Navigate back to homepage
-        window.location.href = "../index.html";
     });
 }
 
@@ -187,10 +211,7 @@ function onTVKeyDown(e) {
         case 461: { // Back (webOS)
             e.preventDefault(); e.stopImmediatePropagation();
             if (isFs) { toggleFullscreen(); return; }
-            if      (tvFocusZone === "channel-list" || tvFocusZone === "tl-nav") setTVZone("sidebar-cats");
-            else if (tvFocusZone === "settings" || tvFocusZone === "sidebar-cats") setTVZone("sidebar-tabs");
-            else if (tvFocusZone === "sidebar-tabs") setTVZone("search");
-            else setTVZone("sidebar-cats");
+            tvGoBack(window._tvBackUrl);
             return;
         }
         case _KEY.CH_UP:
