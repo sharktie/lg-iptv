@@ -291,6 +291,34 @@
     white-space: nowrap;
 }
 
+/* ── Profile type badge ──────────────────────────────────────────────────────── */
+.profile-type-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 2px 6px;
+    border-radius: 5px;
+    background: rgba(255,255,255,0.07);
+    color: var(--text-dim, #8a8f9e);
+    flex-shrink: 0;
+    margin-left: 2px;
+}
+.profile-item.is-active .profile-type-badge {
+    background: rgba(59,130,246,0.15);
+    color: var(--accent, #3b82f6);
+}
+
+/* ── Active profile dot ──────────────────────────────────────────────────────── */
+.profile-active-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent, #3b82f6);
+    flex-shrink: 0;
+    box-shadow: 0 0 6px rgba(59,130,246,0.7);
+}
+
 /* Right editor area */
 #profile-editor {
     flex: 1;
@@ -331,6 +359,40 @@
     flex-shrink: 0;
     align-self: flex-end;
     height: 48px;
+}
+
+/* ── Source type toggle (Xtream | M3U) ──────────────────────────────────────── */
+#type-toggle {
+    display: flex;
+    gap: 0;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+.type-btn {
+    flex: 1;
+    padding: 10px 0;
+    background: transparent;
+    border: none;
+    color: var(--text-dim, #8a8f9e);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    font-family: inherit;
+}
+.type-btn + .type-btn {
+    border-left: 1px solid rgba(255,255,255,0.1);
+}
+.type-btn.type-active {
+    background: var(--accent, #3b82f6);
+    color: #fff;
+}
+.type-btn.tv-focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--accent, #3b82f6) inset;
+    color: var(--text, #e8eaf0);
 }
 
 /* URL list rows */
@@ -460,6 +522,7 @@
 }
 
 .settings-select {
+    -webkit-appearance: none;
     appearance: none;
     cursor: pointer;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23565b6e' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");

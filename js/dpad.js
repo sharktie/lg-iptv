@@ -37,7 +37,10 @@ function tvSetBackUrl(url) {
 
 function initTVNavigation() {
     window.addEventListener("keydown", onTVKeyDown, { capture: true, passive: false });
+    
+if (typeof webOSSystem !== 'undefined' && typeof webOSSystem.notifyAppLoaded === 'function') {
     webOSSystem.notifyAppLoaded();
+}
 
     // popstate fires when Back is pressed while the assign panel is open
     // (a history entry was pushed in showAssignPanel so that one Back press

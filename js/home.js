@@ -90,6 +90,9 @@ window.addEventListener("load", () => {
     _updateDate();
 
     // Notify webOS
+   // After
+if (typeof webOSSystem !== 'undefined' && typeof webOSSystem.notifyAppLoaded === 'function') {
     webOSSystem.notifyAppLoaded();
+}
 });
 

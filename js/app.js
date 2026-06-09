@@ -22,7 +22,7 @@ if (typeof setSettingsStatus === "undefined") {
 // ── Local storage helpers ─────────────────────────────────────────────────────
 
 function load(key, fallback) {
-    try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
+    try { var v = localStorage.getItem(key); return v != null ? JSON.parse(v) : fallback; }
     catch { return fallback; }
 }
 function save(key, val) {
@@ -1124,7 +1124,7 @@ async function fetchRemoteManifest() {
 
 async function checkForUpdates() {
     try {
-        const localRes = await fetchWithTimeout("./appinfo.json");
+        const localRes = await fetchWithTimeout("../appinfo.json");
         if (!localRes.ok) return;
         const localInfo = await localRes.json();
         const manifest  = await fetchRemoteManifest();

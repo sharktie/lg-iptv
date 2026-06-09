@@ -1,0 +1,12 @@
+{
+  "presets": [
+    ["@babel/preset-env", {
+      "targets": {
+        "chrome": "38"
+      }
+    }]
+  ],
+  "plugins": [
+    "@babel/plugin-proposal-optional-catch-binding"
+  ]
+}
