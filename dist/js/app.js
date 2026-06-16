@@ -20,9 +20,11 @@ var activeCategory = "favs";
 var activeFavGroup = "all";
 var epgCache = {};
 var favourites = load("iptv_favourites", []);
+var _favsSet = new Set(favourites);
 var favGroups = load("iptv_fav_groups", []);
 var currentChannel = null;
 var epgLoadAbortKey = 0;
+var epgBlocked = false; // set true on first 403 — stops all further EPG requests
 var _keepScrollOnApply = false;
 var TIMELINE_HOURS = 3;
 var timelineOffset = 0;
@@ -166,13 +168,19 @@ function scheduleEpgSave() {
 // ── Favourites ────────────────────────────────────────────────────────────────
 
 function isFav(sid) {
-  return favourites.includes(String(sid));
+  return _favsSet.has(String(sid));
 }
 function toggleFav(sid) {
   sid = String(sid);
-  favourites = isFav(sid) ? favourites.filter(function (x) {
-    return x !== sid;
-  }) : [].concat(_toConsumableArray(favourites), [sid]);
+  if (_favsSet.has(sid)) {
+    favourites = favourites.filter(function (x) {
+      return x !== sid;
+    });
+    _favsSet.delete(sid);
+  } else {
+    favourites = [].concat(_toConsumableArray(favourites), [sid]);
+    _favsSet.add(sid);
+  }
   save("iptv_favourites", favourites);
 }
 function moveFav(sid, dir) {
@@ -389,7 +397,10 @@ function _initAppXtream2() {
             _context3.n = 5;
             break;
           }
-          setStatus("ERR: missing server_url", true);
+          setStatus("No server configured — redirecting to Settings…", false);
+          setTimeout(function () {
+            window.location.href = "../pages/settings.html";
+          }, 1800);
           return _context3.a(2);
         case 5:
           cachedCh = loadChannelCache();
@@ -715,89 +726,105 @@ function _loadEPGForCurrentCategory() {
     return _regenerator().w(function (_context5) {
       while (1) switch (_context5.n) {
         case 0:
-          myKey = ++epgLoadAbortKey;
-          needed = getFilteredChannels().filter(function (ch) {
-            return epgCache[ch.stream_id] === undefined;
-          });
-          if (needed.length) {
+          if (!epgBlocked) {
             _context5.n = 1;
             break;
           }
           return _context5.a(2);
         case 1:
+          myKey = ++epgLoadAbortKey;
+          needed = getFilteredChannels().filter(function (ch) {
+            return epgCache[ch.stream_id] === undefined;
+          });
+          if (needed.length) {
+            _context5.n = 2;
+            break;
+          }
+          return _context5.a(2);
+        case 2:
           needed.forEach(function (ch) {
             epgCache[ch.stream_id] = null;
           });
           BATCH = 4;
           i = 0;
-        case 2:
+        case 3:
           if (!(i < needed.length)) {
-            _context5.n = 7;
+            _context5.n = 8;
             break;
           }
-          if (!(epgLoadAbortKey !== myKey)) {
-            _context5.n = 3;
+          if (!(epgLoadAbortKey !== myKey || epgBlocked)) {
+            _context5.n = 4;
             break;
           }
           return _context5.a(2);
-        case 3:
-          _context5.n = 4;
+        case 4:
+          _context5.n = 5;
           return Promise.all(needed.slice(i, i + BATCH).map(/*#__PURE__*/function () {
             var _ref5 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(ch) {
               var _t6, _t7;
               return _regenerator().w(function (_context4) {
                 while (1) switch (_context4.p = _context4.n) {
                   case 0:
-                    _context4.p = 0;
-                    if (!(ch._source === "m3u")) {
-                      _context4.n = 2;
+                    if (!epgBlocked) {
+                      _context4.n = 1;
                       break;
                     }
-                    _context4.n = 1;
-                    return m3uGetEPG(ch.stream_id);
+                    return _context4.a(2);
                   case 1:
-                    _t6 = _context4.v;
-                    _context4.n = 4;
-                    break;
+                    _context4.p = 1;
+                    if (!(ch._source === "m3u")) {
+                      _context4.n = 3;
+                      break;
+                    }
+                    _context4.n = 2;
+                    return m3uGetEPG(ch.stream_id);
                   case 2:
-                    _context4.n = 3;
-                    return xtreamGetEPG(cfg, ch.stream_id);
-                  case 3:
                     _t6 = _context4.v;
-                  case 4:
-                    epgCache[ch.stream_id] = _t6;
-                    _context4.n = 6;
+                    _context4.n = 5;
                     break;
+                  case 3:
+                    _context4.n = 4;
+                    return xtreamGetEPG(cfg, ch.stream_id);
+                  case 4:
+                    _t6 = _context4.v;
                   case 5:
-                    _context4.p = 5;
-                    _t7 = _context4.v;
-                    epgCache[ch.stream_id] = [];
+                    epgCache[ch.stream_id] = _t6;
+                    _context4.n = 7;
+                    break;
                   case 6:
+                    _context4.p = 6;
+                    _t7 = _context4.v;
+                    if (_t7 && _t7.message && _t7.message.indexOf("403") !== -1) {
+                      epgBlocked = true;
+                    } else {
+                      epgCache[ch.stream_id] = [];
+                    }
+                  case 7:
                     return _context4.a(2);
                 }
-              }, _callee4, null, [[0, 5]]);
+              }, _callee4, null, [[1, 6]]);
             }));
-            return function (_x7) {
+            return function (_x6) {
               return _ref5.apply(this, arguments);
             };
           }()));
-        case 4:
-          if (!(epgLoadAbortKey !== myKey)) {
-            _context5.n = 5;
+        case 5:
+          if (!(epgLoadAbortKey !== myKey || epgBlocked)) {
+            _context5.n = 6;
             break;
           }
           return _context5.a(2);
-        case 5:
+        case 6:
           needed.slice(i, i + BATCH).forEach(function (ch) {
             return patchEpgStrip(ch.stream_id);
           });
-        case 6:
-          i += BATCH;
-          _context5.n = 2;
-          break;
         case 7:
-          scheduleEpgSave();
+          i += BATCH;
+          _context5.n = 3;
+          break;
         case 8:
+          scheduleEpgSave();
+        case 9:
           return _context5.a(2);
       }
     }, _callee5);
@@ -814,7 +841,7 @@ function setupPip() {
   document.addEventListener("webkitfullscreenchange", onFullscreenChange);
   var osd = document.createElement("div");
   osd.id = "fs-osd";
-  osd.innerHTML = "\n        <div id=\"fs-osd-top\">\n            <div id=\"fs-osd-channel\"></div>\n        </div>\n        <div id=\"fs-osd-bottom\">\n            <div id=\"fs-osd-epg-row\">\n                <span class=\"fs-osd-badge now\">NOW</span>\n                <span id=\"fs-osd-now-title\"></span>\n                <span id=\"fs-osd-now-time\"></span>\n            </div>\n            <div id=\"fs-osd-epg-row2\">\n                <span class=\"fs-osd-badge next\">NEXT</span>\n                <span id=\"fs-osd-next-title\"></span>\n                <span id=\"fs-osd-next-time\"></span>\n            </div>\n            <div id=\"fs-osd-bar-wrap\"><div id=\"fs-osd-bar-fill\"></div></div>\n        </div>";
+  osd.innerHTML = "\n        <div id=\"fs-osd-top\">\n            <div id=\"fs-osd-channel\"></div>\n            <div id=\"fs-osd-top-right\">\n                <span id=\"fs-osd-quality\" hidden></span>\n                <span id=\"fs-osd-ch-num\" hidden></span>\n            </div>\n        </div>\n        <div id=\"fs-osd-bottom\">\n            <div id=\"fs-osd-epg-row\">\n                <span class=\"fs-osd-badge now\">NOW</span>\n                <span id=\"fs-osd-now-title\"></span>\n                <span id=\"fs-osd-now-time\"></span>\n            </div>\n            <div id=\"fs-osd-epg-row2\">\n                <span class=\"fs-osd-badge next\">NEXT</span>\n                <span id=\"fs-osd-next-title\"></span>\n                <span id=\"fs-osd-next-time\"></span>\n            </div>\n            <div id=\"fs-osd-bar-wrap\"><div id=\"fs-osd-bar-fill\"></div></div>\n        </div>";
   document.getElementById("pip-wrap").appendChild(osd);
 }
 function toggleFullscreen() {
@@ -843,6 +870,39 @@ function showOSD() {
   var osd = document.getElementById("fs-osd");
   if (!osd) return;
   document.getElementById("fs-osd-channel").textContent = ((_currentChannel = currentChannel) === null || _currentChannel === void 0 ? void 0 : _currentChannel.name) || "";
+
+  // ── Channel number badge ──────────────────────────────────────────────────
+  var chNumEl = document.getElementById("fs-osd-ch-num");
+  if (chNumEl) {
+    var chIdx = currentChannel ? _vsChannels.findIndex(function (ch) {
+      return String(ch.stream_id) === String(currentChannel.stream_id);
+    }) : -1;
+    if (chIdx >= 0) {
+      chNumEl.textContent = "CH " + (chIdx + 1);
+      chNumEl.removeAttribute("hidden");
+    } else {
+      chNumEl.setAttribute("hidden", "");
+    }
+  }
+
+  // ── Stream quality badge ──────────────────────────────────────────────────
+  var qualEl = document.getElementById("fs-osd-quality");
+  if (qualEl) {
+    var _player$video, _player$video2;
+    var w = ((_player$video = player.video) === null || _player$video === void 0 ? void 0 : _player$video.videoWidth) || 0;
+    var h = ((_player$video2 = player.video) === null || _player$video2 === void 0 ? void 0 : _player$video2.videoHeight) || 0;
+    if (w > 0 && h > 0) {
+      var cls = "";
+      if (w >= 3840 || h >= 2160) cls = "quality-4k";else if (w >= 1920 || h >= 1080) cls = "quality-fhd";else if (w >= 1280 || h >= 720) cls = "quality-hd";
+      qualEl.textContent = w + "×" + h;
+      qualEl.className = cls;
+      qualEl.removeAttribute("hidden");
+    } else {
+      qualEl.setAttribute("hidden", "");
+    }
+  }
+
+  // ── EPG data ──────────────────────────────────────────────────────────────
   var listings = currentChannel ? epgCache[currentChannel.stream_id] : null;
   var nowTitle = "",
     nowTime = "",
@@ -879,7 +939,7 @@ function showOSD() {
   _osdTimer = setTimeout(function () {
     osd.classList.remove("osd-visible");
     osd.classList.add("osd-hidden");
-  }, 4000);
+  }, 5000);
 }
 
 // ── Categories / sidebar ──────────────────────────────────────────────────────
@@ -1205,10 +1265,11 @@ function getFilteredChannels() {
   var q = document.getElementById("search").value.toLowerCase();
   var list;
   if (activeCategory === "favs") {
+    var byId = new Map(allChannels.map(function (ch) {
+      return [String(ch.stream_id), ch];
+    }));
     var favList = favourites.map(function (id) {
-      return allChannels.find(function (ch) {
-        return String(ch.stream_id) === id;
-      });
+      return byId.get(id);
     }).filter(Boolean);
     if (activeFavGroup !== "all") {
       var g = favGroups.find(function (x) {
@@ -1244,7 +1305,6 @@ function _doApply() {
   var channels = getFilteredChannels();
   var container = document.getElementById("channel-list");
   if (!channels.length) {
-    container.innerHTML = "";
     container.style.height = "auto";
     container.style.position = "static";
     var isFavView = activeCategory === "favs";
@@ -1356,7 +1416,11 @@ function buildEpgStrip(strip, sid) {
     strip.appendChild(_ph);
     return;
   }
+
+  // Skip re-render if already built for this timeline window
+  if (strip.dataset.state === "filled" && strip.dataset.tlStart === String(tlStart)) return;
   strip.dataset.state = "filled";
+  strip.dataset.tlStart = String(tlStart);
   strip.innerHTML = "";
   var now = Date.now();
   var frag = document.createDocumentFragment();
@@ -1410,13 +1474,14 @@ function selectChannel(_x3) {
 function _selectChannel() {
   _selectChannel = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6(ch) {
     var _listings;
-    var playUrl, listings, now, idx, cur, next, _t8, _t9;
+    var _selSid, playUrl, listings, now, idx, cur, next, _t8, _t9;
     return _regenerator().w(function (_context6) {
       while (1) switch (_context6.p = _context6.n) {
         case 0:
           currentChannel = ch;
-          document.querySelectorAll(".tl-row").forEach(function (r) {
-            return r.classList.toggle("selected", r.dataset.sid === String(ch.stream_id));
+          _selSid = String(ch.stream_id);
+          rowCache.forEach(function (entry, sid) {
+            return entry.row.classList.toggle("selected", sid === _selSid);
           });
           document.getElementById("preview-channel-name").textContent = ch.name || "Unknown";
           document.getElementById("pip-channel-name").textContent = ch.name || "Unknown";
@@ -1426,8 +1491,9 @@ function _selectChannel() {
           setEPG("next", "—", "", "");
           document.getElementById("epg-bar-fill").style.width = "0%";
           showPreviewInfo();
+          showOSD(); // immediate banner on channel switch — EPG data populated below
           listings = epgCache[ch.stream_id];
-          if (listings) {
+          if (!(!listings && !epgBlocked)) {
             _context6.n = 8;
             break;
           }
@@ -1455,6 +1521,7 @@ function _selectChannel() {
         case 6:
           _context6.p = 6;
           _t9 = _context6.v;
+          if (_t9 && _t9.message && _t9.message.indexOf("403") !== -1) epgBlocked = true;
           listings = [];
         case 7:
           epgCache[ch.stream_id] = listings;
@@ -1466,7 +1533,7 @@ function _selectChannel() {
             break;
           }
           setEPG("now", "No EPG data", "", "");
-          updateOSDIfFullscreen();
+          showOSD();
           return _context6.a(2);
         case 9:
           now = Date.now();
@@ -1480,7 +1547,7 @@ function _selectChannel() {
           setEPG("now", xtreamDecodeEPG(cur.title), formatTimeRange(cur.start, cur.end), xtreamDecodeEPG(cur.description));
           document.getElementById("epg-bar-fill").style.width = calcProgress(cur.start, cur.end) + "%";
           if (next) setEPG("next", xtreamDecodeEPG(next.title), formatTimeRange(next.start, next.end), "");
-          updateOSDIfFullscreen();
+          showOSD();
         case 10:
           return _context6.a(2);
       }
@@ -1616,7 +1683,7 @@ function _loadCustomXMLTV() {
               ts: Date.now(),
               data: xmltvCache
             }));
-          } catch (_unused12) {}
+          } catch (_unused10) {}
           count = Object.keys(parsed).length;
           setSettingsStatus("epg-load-status", "\u2713 Loaded ".concat(count, " channels from XMLTV."), "ok");
           mergeXMLTVIntoEpgCache();
@@ -1666,272 +1733,30 @@ function loadXMLTVFromCache() {
 function mergeXMLTVIntoEpgCache() {
   if (!xmltvCache.programmes) return;
   var matchField = xmltvCache.matchField || "tvg-id";
+
+  // Build reverse name→xmlId map once instead of iterating per channel
+  var nameToXmlId = {};
+  for (var _i2 = 0, _Object$entries2 = Object.entries(xmltvCache.channelMap || {}); _i2 < _Object$entries2.length; _i2++) {
+    var _Object$entries2$_i = _slicedToArray(_Object$entries2[_i2], 2),
+      xmlId = _Object$entries2$_i[0],
+      name = _Object$entries2$_i[1];
+    nameToXmlId[name.toLowerCase()] = xmlId;
+  }
   allChannels.forEach(function (ch) {
     var sid = String(ch.stream_id);
     var listings = null;
     if (matchField === "tvg-id") {
       var epgId = ch.epg_channel_id || "";
       listings = xmltvCache.programmes[epgId] || null;
-      if (!listings && epgId) {
-        for (var _i2 = 0, _Object$entries2 = Object.entries(xmltvCache.channelMap || {}); _i2 < _Object$entries2.length; _i2++) {
-          var _Object$entries2$_i = _slicedToArray(_Object$entries2[_i2], 2),
-            xmlId = _Object$entries2$_i[0],
-            name = _Object$entries2$_i[1];
-          if (name.toLowerCase() === (ch.name || "").toLowerCase()) {
-            listings = xmltvCache.programmes[xmlId] || null;
-            break;
-          }
-        }
+      if (!listings) {
+        var _xmlId = nameToXmlId[(ch.name || "").toLowerCase()];
+        if (_xmlId) listings = xmltvCache.programmes[_xmlId] || null;
       }
     } else {
-      for (var _i3 = 0, _Object$entries3 = Object.entries(xmltvCache.channelMap || {}); _i3 < _Object$entries3.length; _i3++) {
-        var _Object$entries3$_i = _slicedToArray(_Object$entries3[_i3], 2),
-          _xmlId = _Object$entries3$_i[0],
-          _name = _Object$entries3$_i[1];
-        if (_name.toLowerCase() === (ch.name || "").toLowerCase()) {
-          listings = xmltvCache.programmes[_xmlId] || null;
-          break;
-        }
-      }
+      var _xmlId2 = nameToXmlId[(ch.name || "").toLowerCase()];
+      if (_xmlId2) listings = xmltvCache.programmes[_xmlId2] || null;
     }
     if (listings) epgCache[sid] = listings;
-  });
-}
-
-// ── Auto-updater ──────────────────────────────────────────────────────────────
-
-var MANIFEST_URL = "https://github.com/sharktie/lg-iptv/releases/latest/download/manifest.json";
-var MANIFEST_FALLBACK_URL = "https://raw.githubusercontent.com/sharktie/lg-iptv/main/manifest.json";
-function compareVersions(v1, v2) {
-  var a = String(v1).split(".").map(Number);
-  var b = String(v2).split(".").map(Number);
-  for (var i = 0; i < Math.max(a.length, b.length); i++) {
-    var diff = (a[i] || 0) - (b[i] || 0);
-    if (diff !== 0) return diff > 0 ? 1 : -1;
-  }
-  return 0;
-}
-function fetchWithTimeout(_x6) {
-  return _fetchWithTimeout.apply(this, arguments);
-}
-function _fetchWithTimeout() {
-  _fetchWithTimeout = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8(url) {
-    var timeoutMs,
-      ctrl,
-      tid,
-      res,
-      _args8 = arguments,
-      _t1;
-    return _regenerator().w(function (_context8) {
-      while (1) switch (_context8.p = _context8.n) {
-        case 0:
-          timeoutMs = _args8.length > 1 && _args8[1] !== undefined ? _args8[1] : 12000;
-          ctrl = new AbortController();
-          tid = setTimeout(function () {
-            return ctrl.abort();
-          }, timeoutMs);
-          _context8.p = 1;
-          _context8.n = 2;
-          return fetch(url, {
-            signal: ctrl.signal,
-            cache: "no-store"
-          });
-        case 2:
-          res = _context8.v;
-          clearTimeout(tid);
-          return _context8.a(2, res);
-        case 3:
-          _context8.p = 3;
-          _t1 = _context8.v;
-          clearTimeout(tid);
-          throw _t1;
-        case 4:
-          return _context8.a(2);
-      }
-    }, _callee8, null, [[1, 3]]);
-  }));
-  return _fetchWithTimeout.apply(this, arguments);
-}
-function fetchRemoteManifest() {
-  return _fetchRemoteManifest.apply(this, arguments);
-}
-function _fetchRemoteManifest() {
-  _fetchRemoteManifest = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9() {
-    var _res, res, _t10;
-    return _regenerator().w(function (_context9) {
-      while (1) switch (_context9.p = _context9.n) {
-        case 0:
-          _context9.p = 0;
-          _context9.n = 1;
-          return fetchWithTimeout("".concat(MANIFEST_URL, "?t=").concat(Date.now()));
-        case 1:
-          _res = _context9.v;
-          if (_res.ok) {
-            _context9.n = 2;
-            break;
-          }
-          throw new Error("HTTP ".concat(_res.status));
-        case 2:
-          _context9.n = 3;
-          return _res.json();
-        case 3:
-          return _context9.a(2, _context9.v);
-        case 4:
-          _context9.p = 4;
-          _t10 = _context9.v;
-          _context9.n = 5;
-          return fetchWithTimeout("".concat(MANIFEST_FALLBACK_URL, "?t=").concat(Date.now()));
-        case 5:
-          res = _context9.v;
-          if (res.ok) {
-            _context9.n = 6;
-            break;
-          }
-          throw new Error("HTTP ".concat(res.status));
-        case 6:
-          _context9.n = 7;
-          return res.json();
-        case 7:
-          return _context9.a(2, _context9.v);
-      }
-    }, _callee9, null, [[0, 4]]);
-  }));
-  return _fetchRemoteManifest.apply(this, arguments);
-}
-function checkForUpdates() {
-  return _checkForUpdates.apply(this, arguments);
-}
-function _checkForUpdates() {
-  _checkForUpdates = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0() {
-    var localRes, localInfo, manifest, _t11;
-    return _regenerator().w(function (_context0) {
-      while (1) switch (_context0.p = _context0.n) {
-        case 0:
-          _context0.p = 0;
-          _context0.n = 1;
-          return fetchWithTimeout("../appinfo.json");
-        case 1:
-          localRes = _context0.v;
-          if (localRes.ok) {
-            _context0.n = 2;
-            break;
-          }
-          return _context0.a(2);
-        case 2:
-          _context0.n = 3;
-          return localRes.json();
-        case 3:
-          localInfo = _context0.v;
-          _context0.n = 4;
-          return fetchRemoteManifest();
-        case 4:
-          manifest = _context0.v;
-          if (manifest !== null && manifest !== void 0 && manifest.version) {
-            _context0.n = 5;
-            break;
-          }
-          return _context0.a(2);
-        case 5:
-          if (compareVersions(manifest.version, localInfo.version) > 0) {
-            showUpdatePrompt(localInfo.version, manifest.version, manifest.ipkUrl || manifest.ipk_url);
-          }
-          _context0.n = 7;
-          break;
-        case 6:
-          _context0.p = 6;
-          _t11 = _context0.v;
-        case 7:
-          return _context0.a(2);
-      }
-    }, _callee0, null, [[0, 6]]);
-  }));
-  return _checkForUpdates.apply(this, arguments);
-}
-function showUpdatePrompt(currentVersion, newVersion, ipkUrl) {
-  var overlay = document.createElement("div");
-  overlay.className = "modal-overlay";
-  overlay.id = "update-modal";
-  overlay.innerHTML = "\n        <div class=\"modal-box update-modal-box\">\n            <div class=\"update-modal-icon\">\uD83D\uDCFA</div>\n            <div class=\"modal-heading\">Update Available</div>\n            <div class=\"update-modal-versions\">\n                <span class=\"update-ver-old\">v".concat(currentVersion, "</span>\n                <span class=\"update-ver-arrow\">\u2192</span>\n                <span class=\"update-ver-new\">v").concat(newVersion, "</span>\n            </div>\n            <p class=\"update-modal-desc\">A new version of LiveTV is ready to install. The app will restart automatically after updating.</p>\n            <div class=\"modal-btns update-modal-btns\">\n                <button class=\"modal-btn\" id=\"update-later-btn\">Later</button>\n                <button class=\"modal-btn modal-btn-ok\" id=\"update-now-btn\">\u2B07 Update Now</button>\n            </div>\n            <div id=\"update-progress\" class=\"update-progress\" style=\"display:none\">\n                <div class=\"update-progress-bar\"><div class=\"update-progress-fill\" id=\"update-progress-fill\"></div></div>\n                <div class=\"update-progress-msg\" id=\"update-progress-msg\">Installing\u2026</div>\n            </div>\n        </div>");
-  document.body.appendChild(overlay);
-  var laterBtn = overlay.querySelector("#update-later-btn");
-  var nowBtn = overlay.querySelector("#update-now-btn");
-  var progressBox = overlay.querySelector("#update-progress");
-  laterBtn.addEventListener("click", function () {
-    return overlay.remove();
-  });
-  nowBtn.addEventListener("click", function () {
-    laterBtn.disabled = true;
-    nowBtn.disabled = true;
-    nowBtn.textContent = "Installing…";
-    progressBox.style.display = "block";
-    setUpdateProgress(10, "Downloading update…");
-    installUpdate(ipkUrl, function (pct, msg) {
-      return setUpdateProgress(pct, msg);
-    }).then(function () {
-      setUpdateProgress(100, "Install complete — restarting…");
-      setTimeout(function () {
-        try {
-          webOS.platformBack();
-        } catch (_) {}
-        try {
-          window.close();
-        } catch (_) {}
-      }, 2000);
-    }).catch(function (err) {
-      setUpdateProgress(0, "");
-      progressBox.style.display = "none";
-      laterBtn.disabled = false;
-      nowBtn.disabled = false;
-      nowBtn.textContent = "⬇ Update Now";
-      showUpdateError(overlay, err);
-    });
-  });
-  setTimeout(function () {
-    document.querySelectorAll(".tv-focus-visible").forEach(function (el) {
-      return el.classList.remove("tv-focus-visible");
-    });
-    nowBtn.classList.add("tv-focus-visible");
-    nowBtn.focus({
-      preventScroll: true
-    });
-  }, 80);
-}
-function setUpdateProgress(pct, msg) {
-  var fill = document.getElementById("update-progress-fill");
-  var text = document.getElementById("update-progress-msg");
-  if (fill) fill.style.width = pct + "%";
-  if (text) text.textContent = msg;
-}
-function showUpdateError(overlay, err) {
-  var errBox = overlay.querySelector(".update-error-msg");
-  if (!errBox) {
-    errBox = document.createElement("div");
-    errBox.className = "update-error-msg";
-    overlay.querySelector(".update-modal-box").appendChild(errBox);
-  }
-  errBox.textContent = "Install failed: " + ((err === null || err === void 0 ? void 0 : err.message) || String(err));
-}
-function installUpdate(ipkUrl, onProgress) {
-  return new Promise(function (resolve, reject) {
-    if (typeof webOS === "undefined" || !webOS.service) {
-      reject(new Error("webOS service not available"));
-      return;
-    }
-    onProgress && onProgress(30, "Requesting install service…");
-    webOS.service.request("luna://com.webos.appInstallService/dev/install", {
-      method: "install",
-      parameters: {
-        id: "com.sharktie.iptv",
-        ipkUrl: ipkUrl
-      },
-      onSuccess: function onSuccess(res) {
-        onProgress && onProgress(90, "Finalising…");
-        resolve(res);
-      },
-      onFailure: function onFailure(err2) {
-        reject(new Error((err2 === null || err2 === void 0 ? void 0 : err2.errorText) || (err2 === null || err2 === void 0 ? void 0 : err2.errorCode) || JSON.stringify(err2)));
-      }
-    });
   });
 }
 
@@ -1941,32 +1766,34 @@ window.onload = function () {
   // ── Load active profile into IPTV_CONFIG ──────────────────────────────────
   // Prefer the profiles system; fall back to legacy iptv_custom_config.
   (function loadActiveProfile() {
-    var profiles = load("iptv_profiles", null);
-    if (profiles && profiles.length) {
-      var activeId = load("iptv_active_profile", null);
-      var profile = activeId && profiles.find(function (p) {
-        return p.id === activeId;
-      }) || profiles[0];
-      if (profile) {
-        var resolvedUrl = load("iptv_active_resolved_url", null);
-        window.IPTV_CONFIG = {
-          server_url: resolvedUrl || profile.server_urls[0] || "",
-          server_urls: profile.server_urls || [],
-          username: profile.username || "",
-          password: profile.password || ""
-        };
-        return;
+    try {
+      var profiles = load("iptv_profiles", null);
+      if (profiles && profiles.length) {
+        var activeId = load("iptv_active_profile", null);
+        var profile = activeId && profiles.find(function (p) {
+          return p.id === activeId;
+        }) || profiles[0];
+        if (profile) {
+          var resolvedUrl = load("iptv_active_resolved_url", null);
+          var urls = Array.isArray(profile.server_urls) ? profile.server_urls : [];
+          window.IPTV_CONFIG = {
+            server_url: resolvedUrl || urls[0] || "",
+            server_urls: urls,
+            username: profile.username || "",
+            password: profile.password || ""
+          };
+          return;
+        }
       }
-    }
-    // Legacy fallback
-    var savedCfg = load("iptv_custom_config", null);
-    if (savedCfg && savedCfg.server_url) window.IPTV_CONFIG = savedCfg;
+      // Legacy fallback
+      var savedCfg = load("iptv_custom_config", null);
+      if (savedCfg && savedCfg.server_url) window.IPTV_CONFIG = savedCfg;
+    } catch (_) {}
   })();
   loadXMLTVFromCache();
   initVirtualScroll();
   initTVNavigation();
   initApp();
-  setTimeout(checkForUpdates, 2000);
   if (load("iptv_custom_epg_url", "")) {
     setTimeout(function () {
       return mergeXMLTVIntoEpgCache();

@@ -5,6 +5,25 @@
 
     /* ── Config ─────────────────────────────────────────────────────── */
     function getCfg() {
+        // Profiles system (current)
+        try {
+            var profiles = JSON.parse(localStorage.getItem('iptv_profiles'));
+            if (profiles && profiles.length) {
+                var activeId;
+                try { activeId = JSON.parse(localStorage.getItem('iptv_active_profile')); } catch (e) {}
+                var profile = (activeId && profiles.find(function (p) { return p.id === activeId; })) || profiles[0];
+                if (profile && profile.type !== 'm3u') {
+                    var resolvedUrl;
+                    try { resolvedUrl = JSON.parse(localStorage.getItem('iptv_active_resolved_url')); } catch (e) {}
+                    return {
+                        server_url: resolvedUrl || (profile.server_urls && profile.server_urls[0]) || '',
+                        username:   profile.username || '',
+                        password:   profile.password || ''
+                    };
+                }
+            }
+        } catch (e) {}
+        // Legacy fallback
         try {
             var s = JSON.parse(localStorage.getItem('iptv_custom_config'));
             if (s && s.server_url) return s;

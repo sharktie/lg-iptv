@@ -22,12 +22,24 @@
     transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.15s;
 }
 #home-btn svg { width: 20px; height: 20px; display: block; }
+#settings-btn {
+    width: 46px; height: 46px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg3); border: var(--border); border-radius: 10px;
+    color: var(--text-dim); cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.15s;
+}
+#settings-btn svg { width: 20px; height: 20px; display: block; }
+
 #home-btn:hover,
-#home-btn.tv-focus-visible {
+#home-btn.tv-focus-visible,
+#settings-btn:hover,
+#settings-btn.tv-focus-visible {
     background: var(--accent); border-color: var(--accent);
     color: #fff; transform: scale(1.08);
 }
-#home-btn.tv-focus-visible { box-shadow: 0 0 0 3px var(--accent-dim); }
+#home-btn.tv-focus-visible,
+#settings-btn.tv-focus-visible { box-shadow: 0 0 0 3px var(--accent-dim); }
 #search {
     width: 100%; padding: 15px 16px;
     background: var(--bg3); border: var(--border);
@@ -211,11 +223,13 @@
 #channel-list-wrap {
     flex: 1; overflow-y: auto; overflow-x: hidden; position: relative;
     scrollbar-width: thin; scrollbar-color: var(--bg4) transparent;
+    -webkit-transform: translateZ(0); transform: translateZ(0);
+    will-change: scroll-position;
 }
 #channel-list-wrap:focus { outline: none; }
 #channel-list-wrap::-webkit-scrollbar { width: 6px; }
 #channel-list-wrap::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 4px; }
-#channel-list { position: relative; min-height: 100%; }
+#channel-list { position: relative; min-height: 100%; -webkit-transform: translateZ(0); transform: translateZ(0); }
 .no-results { text-align: center; color: var(--text-dim); padding: 50px 0; font-size: 22px; }
 
 /* ── Channel row ─────────────────────────────────────────────────────────────── */
@@ -349,25 +363,6 @@
 .ctx-item:hover, .ctx-item.tv-focus-visible { background: var(--bg4); }
 .ctx-item.ctx-danger { color: #ff4444; }
 .ctx-item.ctx-danger:hover { background: rgba(255,68,68,0.1); }
-
-/* ── Auto-updater modal ──────────────────────────────────────────────────────── */
-.update-modal-box { text-align: center; max-width: 560px; }
-.update-modal-icon { font-size: 58px; margin-bottom: 12px; }
-.update-modal-versions {
-    display: flex; align-items: center; justify-content: center;
-    gap: 16px; margin: 12px 0 20px; font-size: 22px; font-weight: 700;
-}
-.update-ver-old   { color: var(--text-dim); }
-.update-ver-arrow { color: var(--accent); font-size: 26px; }
-.update-ver-new   { color: #44cc77; }
-.update-modal-desc { font-size: 18px; color: var(--text-dim); line-height: 1.6; margin-bottom: 26px; }
-.update-modal-btns { justify-content: center; gap: 14px; }
-.update-modal-btns .modal-btn { min-width: 130px; }
-.update-progress { margin-top: 18px; }
-.update-progress-bar { height: 6px; background: var(--bg5); border-radius: 4px; overflow: hidden; margin-bottom: 10px; }
-.update-progress-fill { height: 100%; background: var(--accent); border-radius: 4px; width: 0%; transition: width 0.4s ease; }
-.update-progress-msg { font-size: 17px; color: var(--text-dim); text-align: center; }
-.update-error-msg { margin-top: 16px; font-size: 17px; color: #ff5555; text-align: center; line-height: 1.5; }
 
 /* ── D-pad focus states ──────────────────────────────────────────────────────── */
 .tl-col2.tv-focus-visible {

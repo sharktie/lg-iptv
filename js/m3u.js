@@ -41,8 +41,11 @@ function m3uClearCache() {
 
 // ── Parser ────────────────────────────────────────────────────────────────────
 
+const _attrReCache = {};
 function _parseAttr(extinf, attr) {
-    const m = extinf.match(new RegExp(attr + '=["\']([^"\']*)["\']'));
+    let re = _attrReCache[attr];
+    if (!re) re = _attrReCache[attr] = new RegExp(attr + '=["\']([^"\']*)["\']');
+    const m = extinf.match(re);
     return m ? m[1].trim() : "";
 }
 

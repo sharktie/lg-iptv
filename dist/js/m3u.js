@@ -72,8 +72,11 @@ function m3uClearCache() {
 
 // ── Parser ────────────────────────────────────────────────────────────────────
 
+var _attrReCache = {};
 function _parseAttr(extinf, attr) {
-  var m = extinf.match(new RegExp(attr + '=["\']([^"\']*)["\']'));
+  var re = _attrReCache[attr];
+  if (!re) re = _attrReCache[attr] = new RegExp(attr + '=["\']([^"\']*)["\']');
+  var m = extinf.match(re);
   return m ? m[1].trim() : "";
 }
 function m3uParse(text) {

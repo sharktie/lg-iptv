@@ -40,17 +40,33 @@ class IPTVPlayer {
 
         this._msg("Loading…");
 
-        const isHls        = url.includes(".m3u8");
-        const hlsAvailable = typeof Hls !== "undefined" && Hls.isSupported();
+        const isHls = url.includes(".m3u8");
 
-        if (isHls && !this._canPlayNatively() && hlsAvailable) {
-            this._attachHls(url);
+        if (isHls && !this._canPlayNatively()) {
+            // Load HLS.js on demand — not needed for native HLS playback
+            this._loadHls(() => {
+                if (typeof Hls !== "undefined" && Hls.isSupported()) {
+                    this._attachHls(url);
+                } else {
+                    this._playNative(url, isHls);
+                }
+            });
             return;
         }
 
-        const onPlaying = () => { this.video.removeEventListener("error", onError); this._hideMsg(); };
-        const onError   = () => { this.video.removeEventListener("playing", onPlaying); if (isHls && hlsAvailable) this._attachHls(url); };
+        this._playNative(url, isHls);
+    }
 
+    _playNative(url, isHls) {
+        const onPlaying = () => { this.video.removeEventListener("error", onError); this._hideMsg(); };
+        const onError   = () => {
+            this.video.removeEventListener("playing", onPlaying);
+            if (isHls) {
+                this._loadHls(() => {
+                    if (typeof Hls !== "undefined" && Hls.isSupported()) this._attachHls(url);
+                });
+            }
+        };
         this.video.addEventListener("playing", onPlaying, { once: true });
         this.video.addEventListener("error",   onError,   { once: true });
         this.video.src = url;
@@ -59,11 +75,23 @@ class IPTVPlayer {
     }
 
     _canPlayNatively() {
-        if (!this.video?.canPlayType) return false;
+        if (!this.video || !this.video.canPlayType) return false;
         return !!(
             this.video.canPlayType("application/vnd.apple.mpegURL") ||
             this.video.canPlayType("application/x-mpegURL")
         );
+    }
+
+    _loadHls(callback) {
+        if (typeof Hls !== "undefined") { callback(); return; }
+        if (this._hlsLoading) { this._hlsCallbacks.push(callback); return; }
+        this._hlsLoading   = true;
+        this._hlsCallbacks = [callback];
+        const s = document.createElement("script");
+        s.src = "../assets/hls.min.js";
+        s.onload  = () => { this._hlsLoading = false; this._hlsCallbacks.forEach(fn => fn()); this._hlsCallbacks = []; };
+        s.onerror = () => { this._hlsLoading = false; this._hlsCallbacks.forEach(fn => fn()); this._hlsCallbacks = []; };
+        document.head.appendChild(s);
     }
 
     _attachHls(url) {

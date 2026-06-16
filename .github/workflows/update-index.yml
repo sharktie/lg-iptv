@@ -31,6 +31,8 @@ jobs:
             info.version = '$NEW_VERSION';
             fs.writeFileSync('appinfo.json', JSON.stringify(info, null, 2) + '\n');
           "
+          # Update version string in HTML files
+          sed -i "s/IPTV <small>v[0-9]*\.[0-9]*\.[0-9]*<\/small>/IPTV <small>v$NEW_VERSION<\/small>/g" index.html pages/livetv.html
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "Bumped $CURRENT → $NEW_VERSION"
 
@@ -96,7 +98,7 @@ jobs:
           VERSION=${{ steps.version.outputs.version }}
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add appinfo.json manifest.json
+          git add appinfo.json manifest.json index.html pages/livetv.html
           git commit -m "chore: bump version to $VERSION [skip ci]"
           git push
 

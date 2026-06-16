@@ -1,17 +1,25 @@
-function _fetchJSON(url, timeoutMs = 10000) {
-    return (async () => {
-        const ctrl = new AbortController();
-        const tid  = setTimeout(() => ctrl.abort(), timeoutMs);
-        try {
-            const r = await fetch(url, { signal: ctrl.signal });
-            clearTimeout(tid);
-            if (!r.ok) throw new Error("HTTP " + r.status);
-            return await r.json();
-        } catch (err) {
-            clearTimeout(tid);
-            throw err;
-        }
-    })();
+async function _fetchJSON(url, timeoutMs) {
+    if (timeoutMs === undefined) timeoutMs = 10000;
+    const ctrl = new AbortController();
+    const tid  = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+        const r = await fetch(url, { signal: ctrl.signal });
+        clearTimeout(tid);
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return await r.json();
+    } catch (err) {
+        clearTimeout(tid);
+        throw err;
+    }
+}
+
+function _auth(cfg) {
+    return "username=" + encodeURIComponent(cfg.username) +
+           "&password=" + encodeURIComponent(cfg.password);
+}
+
+function _base(cfg) {
+    return (cfg.server_url || "").replace(/\/+$/, "");
 }
 
 function xtreamLoadConfig() {
@@ -19,13 +27,8 @@ function xtreamLoadConfig() {
     return Promise.reject(new Error("window.IPTV_CONFIG not set"));
 }
 
-/**
- * Try each server URL in cfg.server_urls (or fall back to cfg.server_url for
- * backwards-compatibility) until one responds successfully.
- *
- * Returns { cfg, data } where cfg.server_url is the working URL, or null if
- * all URLs fail. Uses a short per-URL timeout so failures are fast.
- */
+// Try each server URL in order until one responds. Returns { cfg, data } with
+// cfg.server_url set to the working URL, or null if all fail.
 async function xtreamLogin(cfg) {
     const urls = cfg.server_urls && cfg.server_urls.length
         ? cfg.server_urls
@@ -33,16 +36,13 @@ async function xtreamLogin(cfg) {
 
     for (const url of urls) {
         try {
+            const base   = url.replace(/\/+$/, "");
             const result = await _fetchJSON(
-                `${url}/player_api.php?username=${cfg.username}&password=${cfg.password}`,
-                8000  /* 8s per URL — fast enough to try several without hanging */
+                `${base}/player_api.php?${_auth({ ...cfg, server_url: url })}`,
+                8000
             );
-            if (result) {
-                return { cfg: { ...cfg, server_url: url }, data: result };
-            }
-        } catch (_) {
-            /* This URL failed — try the next one */
-        }
+            if (result) return { cfg: { ...cfg, server_url: url }, data: result };
+        } catch (_) {}
     }
     return null;
 }
@@ -50,7 +50,7 @@ async function xtreamLogin(cfg) {
 async function xtreamGetLiveChannels(cfg) {
     try {
         const data = await _fetchJSON(
-            `${cfg.server_url}/player_api.php?username=${cfg.username}&password=${cfg.password}&action=get_live_streams`,
+            `${_base(cfg)}/player_api.php?${_auth(cfg)}&action=get_live_streams`,
             15000
         );
         return Array.isArray(data) ? data : (data?.data || []);
@@ -59,16 +59,24 @@ async function xtreamGetLiveChannels(cfg) {
 
 async function xtreamGetCategories(cfg) {
     try {
-        const data = await _fetchJSON(`${cfg.server_url}/player_api.php?username=${cfg.username}&password=${cfg.password}&action=get_live_categories`);
+        const data = await _fetchJSON(
+            `${_base(cfg)}/player_api.php?${_auth(cfg)}&action=get_live_categories`
+        );
         return Array.isArray(data) ? data : [];
     } catch (_) { return []; }
 }
 
 async function xtreamGetEPG(cfg, streamId) {
     try {
-        const data = await _fetchJSON(`${cfg.server_url}/player_api.php?username=${cfg.username}&password=${cfg.password}&action=get_short_epg&stream_id=${streamId}&limit=10`);
+        const data = await _fetchJSON(
+            `${_base(cfg)}/player_api.php?${_auth(cfg)}&action=get_short_epg&stream_id=${encodeURIComponent(streamId)}&limit=10`
+        );
         return data?.epg_listings || [];
-    } catch (_) { return []; }
+    } catch (err) {
+        // Rethrow HTTP errors (e.g. 403) so callers can detect and back off
+        if (err && err.message && /^HTTP \d/.test(err.message)) throw err;
+        return [];
+    }
 }
 
 function xtreamDecodeEPG(str) {
@@ -77,7 +85,7 @@ function xtreamDecodeEPG(str) {
 }
 
 function xtreamBaseUrl(cfg) {
-    return (cfg.server_url || "").replace(/\/+$/, "");
+    return _base(cfg);
 }
 
 function xtreamBuildLiveURL(cfg, streamId) {

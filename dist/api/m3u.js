@@ -72,12 +72,17 @@ function m3uClearCache() {
 
 // ── Parser ────────────────────────────────────────────────────────────────────
 
+var _attrReCache = {};
 function _parseAttr(extinf, attr) {
-  var m = extinf.match(new RegExp(attr + '=["\']([^"\']*)["\']'));
-  return m ? m[1].trim() : "";
+  var re = _attrReCache[attr];
+  // Handles: attr="value"  attr='value'  attr=value (unquoted)
+  if (!re) re = _attrReCache[attr] = new RegExp(attr + '=(?:"([^"]*)"|\'([^\']*)\'|([^\\s"\']*))');
+  var m = extinf.match(re);
+  return m ? (m[1] !== undefined ? m[1] : m[2] !== undefined ? m[2] : m[3] || "").trim() : "";
 }
 function m3uParse(text) {
-  var lines = text.split(/\r?\n/);
+  // Normalise all line-ending styles (\r\n, \r, \n) before splitting
+  var lines = text.replace(/\r\n?/g, "\n").split("\n");
   var channels = [];
   var catSet = new Map(); // category_name → category_id
   var extinf = null;
@@ -143,7 +148,7 @@ function _m3uFetchPlaylist() {
           ctrl = new AbortController();
           tid = setTimeout(function () {
             return ctrl.abort();
-          }, 30000); // large playlists need time
+          }, 30000); // covers both fetch + body read
           _context.p = 1;
           _context.n = 2;
           return fetch(url, {
@@ -151,7 +156,6 @@ function _m3uFetchPlaylist() {
           });
         case 2:
           res = _context.v;
-          clearTimeout(tid);
           if (res.ok) {
             _context.n = 3;
             break;
@@ -162,6 +166,8 @@ function _m3uFetchPlaylist() {
           return res.text();
         case 4:
           text = _context.v;
+          // body still covered by abort signal
+          clearTimeout(tid);
           if (text.includes("#EXTM3U")) {
             _context.n = 5;
             break;

@@ -13,13 +13,16 @@ function _regenerator() { /*! regenerator-runtime -- Copyright (c) 2014-present,
 function _regeneratorDefine2(e, r, n, t) { var i = Object.defineProperty; try { i({}, "", {}); } catch (e) { i = 0; } _regeneratorDefine2 = function _regeneratorDefine(e, r, n, t) { function o(r, n) { _regeneratorDefine2(e, r, function (e) { return this._invoke(r, n, e); }); } r ? i ? i(e, r, { value: n, enumerable: !t, configurable: !t, writable: !t }) : e[r] = n : (o("next", 0), o("throw", 1), o("return", 2)); }, _regeneratorDefine2(e, r, n, t); }
 function asyncGeneratorStep(n, t, e, r, o, a, c) { try { var i = n[a](c), u = i.value; } catch (n) { return void e(n); } i.done ? t(u) : Promise.resolve(u).then(r, o); }
 function _asyncToGenerator(n) { return function () { var t = this, e = arguments; return new Promise(function (r, o) { var a = n.apply(t, e); function _next(n) { asyncGeneratorStep(a, r, o, _next, _throw, "next", n); } function _throw(n) { asyncGeneratorStep(a, r, o, _next, _throw, "throw", n); } _next(void 0); }); }; }
-function _fetchJSON(url) {
-  var timeoutMs = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 10000;
-  return _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee() {
+function _fetchJSON(_x, _x2) {
+  return _fetchJSON2.apply(this, arguments);
+}
+function _fetchJSON2() {
+  _fetchJSON2 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee(url, timeoutMs) {
     var ctrl, tid, r, _t;
     return _regenerator().w(function (_context) {
       while (1) switch (_context.p = _context.n) {
         case 0:
+          if (timeoutMs === undefined) timeoutMs = 10000;
           ctrl = new AbortController();
           tid = setTimeout(function () {
             return ctrl.abort();
@@ -51,26 +54,28 @@ function _fetchJSON(url) {
           return _context.a(2);
       }
     }, _callee, null, [[1, 5]]);
-  }))();
+  }));
+  return _fetchJSON2.apply(this, arguments);
+}
+function _auth(cfg) {
+  return "username=" + encodeURIComponent(cfg.username) + "&password=" + encodeURIComponent(cfg.password);
+}
+function _base(cfg) {
+  return (cfg.server_url || "").replace(/\/+$/, "");
 }
 function xtreamLoadConfig() {
   if (window.IPTV_CONFIG) return Promise.resolve(window.IPTV_CONFIG);
   return Promise.reject(new Error("window.IPTV_CONFIG not set"));
 }
 
-/**
- * Try each server URL in cfg.server_urls (or fall back to cfg.server_url for
- * backwards-compatibility) until one responds successfully.
- *
- * Returns { cfg, data } where cfg.server_url is the working URL, or null if
- * all URLs fail. Uses a short per-URL timeout so failures are fast.
- */
-function xtreamLogin(_x) {
+// Try each server URL in order until one responds. Returns { cfg, data } with
+// cfg.server_url set to the working URL, or null if all fail.
+function xtreamLogin(_x3) {
   return _xtreamLogin.apply(this, arguments);
 }
 function _xtreamLogin() {
   _xtreamLogin = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee2(cfg) {
-    var urls, _iterator, _step, url, result, _t2, _t3;
+    var urls, _iterator, _step, url, base, result, _t2, _t3;
     return _regenerator().w(function (_context2) {
       while (1) switch (_context2.p = _context2.n) {
         case 0:
@@ -85,8 +90,11 @@ function _xtreamLogin() {
           }
           url = _step.value;
           _context2.p = 3;
+          base = url.replace(/\/+$/, "");
           _context2.n = 4;
-          return _fetchJSON("".concat(url, "/player_api.php?username=").concat(cfg.username, "&password=").concat(cfg.password), 8000 /* 8s per URL — fast enough to try several without hanging */);
+          return _fetchJSON("".concat(base, "/player_api.php?").concat(_auth(_objectSpread(_objectSpread({}, cfg), {}, {
+            server_url: url
+          }))), 8000);
         case 4:
           result = _context2.v;
           if (!result) {
@@ -126,7 +134,7 @@ function _xtreamLogin() {
   }));
   return _xtreamLogin.apply(this, arguments);
 }
-function xtreamGetLiveChannels(_x2) {
+function xtreamGetLiveChannels(_x4) {
   return _xtreamGetLiveChannels.apply(this, arguments);
 }
 function _xtreamGetLiveChannels() {
@@ -137,7 +145,7 @@ function _xtreamGetLiveChannels() {
         case 0:
           _context3.p = 0;
           _context3.n = 1;
-          return _fetchJSON("".concat(cfg.server_url, "/player_api.php?username=").concat(cfg.username, "&password=").concat(cfg.password, "&action=get_live_streams"), 15000);
+          return _fetchJSON("".concat(_base(cfg), "/player_api.php?").concat(_auth(cfg), "&action=get_live_streams"), 15000);
         case 1:
           data = _context3.v;
           return _context3.a(2, Array.isArray(data) ? data : (data === null || data === void 0 ? void 0 : data.data) || []);
@@ -150,7 +158,7 @@ function _xtreamGetLiveChannels() {
   }));
   return _xtreamGetLiveChannels.apply(this, arguments);
 }
-function xtreamGetCategories(_x3) {
+function xtreamGetCategories(_x5) {
   return _xtreamGetCategories.apply(this, arguments);
 }
 function _xtreamGetCategories() {
@@ -161,7 +169,7 @@ function _xtreamGetCategories() {
         case 0:
           _context4.p = 0;
           _context4.n = 1;
-          return _fetchJSON("".concat(cfg.server_url, "/player_api.php?username=").concat(cfg.username, "&password=").concat(cfg.password, "&action=get_live_categories"));
+          return _fetchJSON("".concat(_base(cfg), "/player_api.php?").concat(_auth(cfg), "&action=get_live_categories"));
         case 1:
           data = _context4.v;
           return _context4.a(2, Array.isArray(data) ? data : []);
@@ -174,7 +182,7 @@ function _xtreamGetCategories() {
   }));
   return _xtreamGetCategories.apply(this, arguments);
 }
-function xtreamGetEPG(_x4, _x5) {
+function xtreamGetEPG(_x6, _x7) {
   return _xtreamGetEPG.apply(this, arguments);
 }
 function _xtreamGetEPG() {
@@ -185,13 +193,19 @@ function _xtreamGetEPG() {
         case 0:
           _context5.p = 0;
           _context5.n = 1;
-          return _fetchJSON("".concat(cfg.server_url, "/player_api.php?username=").concat(cfg.username, "&password=").concat(cfg.password, "&action=get_short_epg&stream_id=").concat(streamId, "&limit=10"));
+          return _fetchJSON("".concat(_base(cfg), "/player_api.php?").concat(_auth(cfg), "&action=get_short_epg&stream_id=").concat(encodeURIComponent(streamId), "&limit=10"));
         case 1:
           data = _context5.v;
           return _context5.a(2, (data === null || data === void 0 ? void 0 : data.epg_listings) || []);
         case 2:
           _context5.p = 2;
           _t6 = _context5.v;
+          if (!(_t6 && _t6.message && /^HTTP \d/.test(_t6.message))) {
+            _context5.n = 3;
+            break;
+          }
+          throw _t6;
+        case 3:
           return _context5.a(2, []);
       }
     }, _callee5, null, [[0, 2]]);
@@ -207,7 +221,7 @@ function xtreamDecodeEPG(str) {
   }
 }
 function xtreamBaseUrl(cfg) {
-  return (cfg.server_url || "").replace(/\/+$/, "");
+  return _base(cfg);
 }
 function xtreamBuildLiveURL(cfg, streamId) {
   var baseUrl = xtreamBaseUrl(cfg);

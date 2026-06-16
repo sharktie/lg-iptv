@@ -41,13 +41,18 @@ function m3uClearCache() {
 
 // ── Parser ────────────────────────────────────────────────────────────────────
 
+const _attrReCache = {};
 function _parseAttr(extinf, attr) {
-    const m = extinf.match(new RegExp(attr + '=["\']([^"\']*)["\']'));
-    return m ? m[1].trim() : "";
+    let re = _attrReCache[attr];
+    // Handles: attr="value"  attr='value'  attr=value (unquoted)
+    if (!re) re = _attrReCache[attr] = new RegExp(attr + '=(?:"([^"]*)"|\'([^\']*)\'|([^\\s"\']*))');
+    const m = extinf.match(re);
+    return m ? (m[1] !== undefined ? m[1] : m[2] !== undefined ? m[2] : m[3] || "").trim() : "";
 }
 
 function m3uParse(text) {
-    const lines      = text.split(/\r?\n/);
+    // Normalise all line-ending styles (\r\n, \r, \n) before splitting
+    const lines      = text.replace(/\r\n?/g, "\n").split("\n");
     const channels   = [];
     const catSet     = new Map();   // category_name → category_id
     let   extinf     = null;
@@ -103,12 +108,12 @@ function m3uParse(text) {
 
 async function m3uFetchPlaylist(url) {
     const ctrl = new AbortController();
-    const tid  = setTimeout(() => ctrl.abort(), 30000);   // large playlists need time
+    const tid  = setTimeout(() => ctrl.abort(), 30000);   // covers both fetch + body read
     try {
-        const res = await fetch(url, { signal: ctrl.signal });
-        clearTimeout(tid);
+        const res  = await fetch(url, { signal: ctrl.signal });
         if (!res.ok) throw new Error("HTTP " + res.status);
-        const text = await res.text();
+        const text = await res.text();   // body still covered by abort signal
+        clearTimeout(tid);
         if (!text.includes("#EXTM3U")) throw new Error("Not a valid M3U playlist");
         return m3uParse(text);
     } catch (err) {

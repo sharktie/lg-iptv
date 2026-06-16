@@ -4,8 +4,11 @@
 let tvFocusZone       = "channel-list";
 let tvRowIndex        = 0;
 let tvSidebarIndex    = 0;
+let tvHeaderIndex     = 0;   // 0 = home-btn, 1 = settings-btn
 let tvRowSubZone      = "row";
 let _fsEnterTimer     = null;
+let _rowEnterTimer    = null;
+let _rowEnterSid      = null;
 let _ctxMenuIndex     = 0;
 let _assignPanelIndex = 0;
 
@@ -37,10 +40,10 @@ function tvSetBackUrl(url) {
 
 function initTVNavigation() {
     window.addEventListener("keydown", onTVKeyDown, { capture: true, passive: false });
-    
-if (typeof webOSSystem !== 'undefined' && typeof webOSSystem.notifyAppLoaded === 'function') {
-    webOSSystem.notifyAppLoaded();
-}
+
+    if (typeof webOSSystem !== "undefined" && typeof webOSSystem.notifyAppLoaded === "function") {
+        webOSSystem.notifyAppLoaded();
+    }
 
     // popstate fires when Back is pressed while the assign panel is open
     // (a history entry was pushed in showAssignPanel so that one Back press
@@ -56,8 +59,9 @@ if (typeof webOSSystem !== 'undefined' && typeof webOSSystem.notifyAppLoaded ===
 }
 
 function _restoreZoneFocus() {
-    if (tvFocusZone === "settings" || tvFocusZone === "sidebar-cats") tvFocusSidebarItem(tvSidebarIndex);
-    else if (tvFocusZone === "channel-list") tvFocusRow(tvRowIndex);
+    if (tvFocusZone === "sidebar-header")                              _focusSidebarHeader();
+    else if (tvFocusZone === "settings" || tvFocusZone === "sidebar-cats") tvFocusSidebarItem(tvSidebarIndex);
+    else if (tvFocusZone === "channel-list")                           tvFocusRow(tvRowIndex);
     else setTVZone(tvFocusZone);
 }
 
@@ -108,8 +112,11 @@ function onTVKeyDown(e) {
                 const items = getSidebarFocusables();
                 if (d < 0 && tvSidebarIndex === 0) setTVZone("sidebar-tabs");
                 else { tvSidebarIndex = Math.max(0, Math.min(items.length - 1, tvSidebarIndex + d)); tvFocusSidebarItem(tvSidebarIndex); }
+            } else if (tvFocusZone === "sidebar-header") {
+                if (d > 0) setTVZone("search");
             } else if (tvFocusZone === "search") {
-                if (d > 0) setTVZone("sidebar-tabs");
+                if (d < 0) setTVZone("sidebar-header");
+                else setTVZone("sidebar-tabs");
             } else if (tvFocusZone === "tl-nav") {
                 if (d < 0) setTVZone("channel-list");
             } else if (tvFocusZone === "sidebar-tabs") {
@@ -121,6 +128,10 @@ function onTVKeyDown(e) {
         case _KEY.LEFT: {
             e.preventDefault();
             if (isFs) { showOSD(); return; }
+            if (tvFocusZone === "sidebar-header") {
+                if (tvHeaderIndex > 0) { tvHeaderIndex--; _focusSidebarHeader(); }
+                return;
+            }
             if (tvFocusZone === "settings") {
                 const focused = getSidebarFocusables()[tvSidebarIndex];
                 if (focused?.classList.contains("source-toggle-btn")) {
@@ -146,6 +157,10 @@ function onTVKeyDown(e) {
         case _KEY.RIGHT: {
             e.preventDefault();
             if (isFs) { showOSD(); return; }
+            if (tvFocusZone === "sidebar-header") {
+                if (tvHeaderIndex < 1) { tvHeaderIndex++; _focusSidebarHeader(); }
+                return;
+            }
             if (tvFocusZone === "settings") {
                 const focused = getSidebarFocusables()[tvSidebarIndex];
                 if (focused?.classList.contains("source-toggle-btn")) {
@@ -176,6 +191,11 @@ function onTVKeyDown(e) {
         }
         case _KEY.ENTER: {
             e.preventDefault();
+            if (tvFocusZone === "sidebar-header") {
+                const _hBtns = [document.getElementById("home-btn"), document.getElementById("settings-btn")];
+                _hBtns[tvHeaderIndex]?.click();
+                return;
+            }
             if (isFs) {
                 if (_fsEnterTimer) { clearTimeout(_fsEnterTimer); _fsEnterTimer = null; toggleFullscreen(); }
                 else { showOSD(); _fsEnterTimer = setTimeout(() => { _fsEnterTimer = null; }, 500); }
@@ -189,8 +209,24 @@ function onTVKeyDown(e) {
                 else if (tvRowSubZone === "reorder-up")   { _reorderAndRefocus(String(ch.stream_id), -1, "reorder-up"); }
                 else if (tvRowSubZone === "reorder-down") { _reorderAndRefocus(String(ch.stream_id),  1, "reorder-down"); }
                 else {
-                    if (currentChannel && String(currentChannel.stream_id) === String(ch.stream_id)) toggleFullscreen();
-                    else selectChannel(ch);
+                    const sid = String(ch.stream_id);
+                    const alreadyPlaying = currentChannel && String(currentChannel.stream_id) === sid;
+                    if (_rowEnterTimer && _rowEnterSid === sid) {
+                        // Double press — go fullscreen (select first if not already playing)
+                        clearTimeout(_rowEnterTimer); _rowEnterTimer = null; _rowEnterSid = null;
+                        if (!alreadyPlaying) selectChannel(ch);
+                        toggleFullscreen();
+                    } else if (alreadyPlaying) {
+                        // Single press on active channel — fullscreen immediately, no restart
+                        clearTimeout(_rowEnterTimer); _rowEnterTimer = null; _rowEnterSid = null;
+                        toggleFullscreen();
+                    } else {
+                        // Single press on a different channel — select/play
+                        clearTimeout(_rowEnterTimer);
+                        _rowEnterSid   = sid;
+                        _rowEnterTimer = setTimeout(function () { _rowEnterTimer = null; _rowEnterSid = null; }, 400);
+                        selectChannel(ch);
+                    }
                 }
             } else if (tvFocusZone === "search") {
                 const el = document.getElementById("search");
@@ -230,7 +266,10 @@ function setTVZone(zone) {
     tvFocusZone = zone; tvRowSubZone = "row";
     document.querySelectorAll(".tv-focus-visible").forEach(el => el.classList.remove("tv-focus-visible"));
     document.querySelectorAll(".tv-row-active").forEach(el => el.classList.remove("tv-row-active"));
-    if (zone === "sidebar-cats" || zone === "settings") {
+    if (zone === "sidebar-header") {
+        tvHeaderIndex = 0;
+        _focusSidebarHeader();
+    } else if (zone === "sidebar-cats" || zone === "settings") {
         tvSidebarIndex = Math.max(0, Math.min(getSidebarFocusables().length - 1, tvSidebarIndex));
         tvFocusSidebarItem(tvSidebarIndex);
     } else if (zone === "channel-list") {
@@ -244,6 +283,13 @@ function setTVZone(zone) {
     } else if (zone === "search") {
         document.getElementById("search")?.classList.add("tv-focus-visible");
     }
+}
+
+function _focusSidebarHeader() {
+    _clearFocus();
+    const btns = [document.getElementById("home-btn"), document.getElementById("settings-btn")];
+    const el = btns[tvHeaderIndex];
+    if (el) { el.classList.add("tv-focus-visible"); }
 }
 
 // ── Focus helpers ─────────────────────────────────────────────────────────────

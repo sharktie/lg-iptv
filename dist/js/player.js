@@ -57,18 +57,34 @@ var IPTVPlayer = /*#__PURE__*/function () {
       this.video.style.display = "block";
       this._msg("Loading…");
       var isHls = url.includes(".m3u8");
-      var hlsAvailable = typeof Hls !== "undefined" && Hls.isSupported();
-      if (isHls && !this._canPlayNatively() && hlsAvailable) {
-        this._attachHls(url);
+      if (isHls && !this._canPlayNatively()) {
+        // Load HLS.js on demand — not needed for native HLS playback
+        this._loadHls(function () {
+          if (typeof Hls !== "undefined" && Hls.isSupported()) {
+            _this._attachHls(url);
+          } else {
+            _this._playNative(url, isHls);
+          }
+        });
         return;
       }
+      this._playNative(url, isHls);
+    }
+  }, {
+    key: "_playNative",
+    value: function _playNative(url, isHls) {
+      var _this2 = this;
       var onPlaying = function onPlaying() {
-        _this.video.removeEventListener("error", onError);
-        _this._hideMsg();
+        _this2.video.removeEventListener("error", onError);
+        _this2._hideMsg();
       };
       var onError = function onError() {
-        _this.video.removeEventListener("playing", onPlaying);
-        if (isHls && hlsAvailable) _this._attachHls(url);
+        _this2.video.removeEventListener("playing", onPlaying);
+        if (isHls) {
+          _this2._loadHls(function () {
+            if (typeof Hls !== "undefined" && Hls.isSupported()) _this2._attachHls(url);
+          });
+        }
       };
       this.video.addEventListener("playing", onPlaying, {
         once: true
@@ -83,27 +99,58 @@ var IPTVPlayer = /*#__PURE__*/function () {
   }, {
     key: "_canPlayNatively",
     value: function _canPlayNatively() {
-      var _this$video;
-      if (!((_this$video = this.video) !== null && _this$video !== void 0 && _this$video.canPlayType)) return false;
+      if (!this.video || !this.video.canPlayType) return false;
       return !!(this.video.canPlayType("application/vnd.apple.mpegURL") || this.video.canPlayType("application/x-mpegURL"));
+    }
+  }, {
+    key: "_loadHls",
+    value: function _loadHls(callback) {
+      var _this3 = this;
+      if (typeof Hls !== "undefined") {
+        callback();
+        return;
+      }
+      if (this._hlsLoading) {
+        this._hlsCallbacks.push(callback);
+        return;
+      }
+      this._hlsLoading = true;
+      this._hlsCallbacks = [callback];
+      var s = document.createElement("script");
+      s.src = "../assets/hls.min.js";
+      s.onload = function () {
+        _this3._hlsLoading = false;
+        _this3._hlsCallbacks.forEach(function (fn) {
+          return fn();
+        });
+        _this3._hlsCallbacks = [];
+      };
+      s.onerror = function () {
+        _this3._hlsLoading = false;
+        _this3._hlsCallbacks.forEach(function (fn) {
+          return fn();
+        });
+        _this3._hlsCallbacks = [];
+      };
+      document.head.appendChild(s);
     }
   }, {
     key: "_attachHls",
     value: function _attachHls(url) {
-      var _this2 = this;
+      var _this4 = this;
       this.destroyHls();
       this.hls = new Hls({
         enableWorker: false
       });
       this.hls.attachMedia(this.video);
       this.hls.on(Hls.Events.MEDIA_ATTACHED, function () {
-        return _this2.hls.loadSource(url);
+        return _this4.hls.loadSource(url);
       });
       this.hls.on(Hls.Events.MANIFEST_PARSED, function () {
-        return _this2.video.play().catch(function () {});
+        return _this4.video.play().catch(function () {});
       });
       this.video.addEventListener("playing", function () {
-        return _this2._hideMsg();
+        return _this4._hideMsg();
       }, {
         once: true
       });

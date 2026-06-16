@@ -4,9 +4,11 @@ let activeCategory = "favs";
 let activeFavGroup = "all";
 let epgCache       = {};
 let favourites     = load("iptv_favourites", []);
+let _favsSet       = new Set(favourites);
 let favGroups      = load("iptv_fav_groups", []);
 let currentChannel = null;
 let epgLoadAbortKey = 0;
+let epgBlocked      = false;   // set true on first 403 — stops all further EPG requests
 let _keepScrollOnApply = false;
 
 const TIMELINE_HOURS = 3;
@@ -99,10 +101,16 @@ function scheduleEpgSave() {
 
 // ── Favourites ────────────────────────────────────────────────────────────────
 
-function isFav(sid)    { return favourites.includes(String(sid)); }
+function isFav(sid)    { return _favsSet.has(String(sid)); }
 function toggleFav(sid) {
     sid = String(sid);
-    favourites = isFav(sid) ? favourites.filter(x => x !== sid) : [...favourites, sid];
+    if (_favsSet.has(sid)) {
+        favourites = favourites.filter(x => x !== sid);
+        _favsSet.delete(sid);
+    } else {
+        favourites = [...favourites, sid];
+        _favsSet.add(sid);
+    }
     save("iptv_favourites", favourites);
 }
 function moveFav(sid, dir) {
@@ -216,7 +224,11 @@ async function _initAppXtream(setStatus) {
     try { cfg = await xtreamLoadConfig(); }
     catch (err) { setStatus("ERR: " + err.message, true); return; }
 
-    if (!cfg?.server_url) { setStatus("ERR: missing server_url", true); return; }
+    if (!cfg?.server_url) {
+        setStatus("No server configured — redirecting to Settings…", false);
+        setTimeout(() => { window.location.href = "../pages/settings.html"; }, 1800);
+        return;
+    }
 
     const cachedCh  = loadChannelCache();
     const cachedCat = loadCatCache();
@@ -446,6 +458,7 @@ function _buildRow(ch, sid) {
 // ── EPG loading ───────────────────────────────────────────────────────────────
 
 async function loadEPGForCurrentCategory() {
+    if (epgBlocked) return;
     const myKey  = ++epgLoadAbortKey;
     const needed = getFilteredChannels().filter(ch => epgCache[ch.stream_id] === undefined);
     if (!needed.length) return;
@@ -453,16 +466,22 @@ async function loadEPGForCurrentCategory() {
 
     const BATCH = 4;
     for (let i = 0; i < needed.length; i += BATCH) {
-        if (epgLoadAbortKey !== myKey) return;
+        if (epgLoadAbortKey !== myKey || epgBlocked) return;
         await Promise.all(needed.slice(i, i + BATCH).map(async ch => {
+            if (epgBlocked) return;
             try {
                 epgCache[ch.stream_id] = ch._source === "m3u"
                     ? await m3uGetEPG(ch.stream_id)
                     : await xtreamGetEPG(cfg, ch.stream_id);
+            } catch (err) {
+                if (err && err.message && err.message.indexOf("403") !== -1) {
+                    epgBlocked = true;
+                } else {
+                    epgCache[ch.stream_id] = [];
+                }
             }
-            catch { epgCache[ch.stream_id] = []; }
         }));
-        if (epgLoadAbortKey !== myKey) return;
+        if (epgLoadAbortKey !== myKey || epgBlocked) return;
         needed.slice(i, i + BATCH).forEach(ch => patchEpgStrip(ch.stream_id));
     }
     scheduleEpgSave();
@@ -482,6 +501,10 @@ function setupPip() {
     osd.innerHTML = `
         <div id="fs-osd-top">
             <div id="fs-osd-channel"></div>
+            <div id="fs-osd-top-right">
+                <span id="fs-osd-quality" hidden></span>
+                <span id="fs-osd-ch-num" hidden></span>
+            </div>
         </div>
         <div id="fs-osd-bottom">
             <div id="fs-osd-epg-row">
@@ -528,6 +551,39 @@ function showOSD() {
 
     document.getElementById("fs-osd-channel").textContent = currentChannel?.name || "";
 
+    // ── Channel number badge ──────────────────────────────────────────────────
+    const chNumEl = document.getElementById("fs-osd-ch-num");
+    if (chNumEl) {
+        const chIdx = currentChannel
+            ? _vsChannels.findIndex(ch => String(ch.stream_id) === String(currentChannel.stream_id))
+            : -1;
+        if (chIdx >= 0) {
+            chNumEl.textContent = "CH " + (chIdx + 1);
+            chNumEl.removeAttribute("hidden");
+        } else {
+            chNumEl.setAttribute("hidden", "");
+        }
+    }
+
+    // ── Stream quality badge ──────────────────────────────────────────────────
+    const qualEl = document.getElementById("fs-osd-quality");
+    if (qualEl) {
+        const w = player.video?.videoWidth  || 0;
+        const h = player.video?.videoHeight || 0;
+        if (w > 0 && h > 0) {
+            let cls = "";
+            if      (w >= 3840 || h >= 2160) cls = "quality-4k";
+            else if (w >= 1920 || h >= 1080) cls = "quality-fhd";
+            else if (w >= 1280 || h >=  720) cls = "quality-hd";
+            qualEl.textContent = w + "×" + h;
+            qualEl.className   = cls;
+            qualEl.removeAttribute("hidden");
+        } else {
+            qualEl.setAttribute("hidden", "");
+        }
+    }
+
+    // ── EPG data ──────────────────────────────────────────────────────────────
     const listings = currentChannel ? epgCache[currentChannel.stream_id] : null;
     let nowTitle = "", nowTime = "", nextTitle = "", nextTime = "", progress = 0;
 
@@ -555,7 +611,7 @@ function showOSD() {
     _osdTimer = setTimeout(() => {
         osd.classList.remove("osd-visible");
         osd.classList.add("osd-hidden");
-    }, 4000);
+    }, 5000);
 }
 
 
@@ -750,7 +806,8 @@ function getFilteredChannels() {
     const q = document.getElementById("search").value.toLowerCase();
     let list;
     if (activeCategory === "favs") {
-        let favList = favourites.map(id => allChannels.find(ch => String(ch.stream_id) === id)).filter(Boolean);
+        const byId = new Map(allChannels.map(ch => [String(ch.stream_id), ch]));
+        let favList = favourites.map(id => byId.get(id)).filter(Boolean);
         if (activeFavGroup !== "all") {
             const g   = favGroups.find(x => x.id === activeFavGroup);
             const ids = g ? g.channelIds : [];
@@ -777,7 +834,6 @@ function _doApply() {
     const container = document.getElementById("channel-list");
 
     if (!channels.length) {
-        container.innerHTML = "";
         container.style.height = "auto"; container.style.position = "static";
         const isFavView = activeCategory === "favs";
         container.innerHTML = `<div class="no-results">${
@@ -865,7 +921,10 @@ function buildEpgStrip(strip, sid) {
         strip.appendChild(ph); return;
     }
 
-    strip.dataset.state = "filled"; strip.innerHTML = "";
+    // Skip re-render if already built for this timeline window
+    if (strip.dataset.state === "filled" && strip.dataset.tlStart === String(tlStart)) return;
+
+    strip.dataset.state = "filled"; strip.dataset.tlStart = String(tlStart); strip.innerHTML = "";
     const now  = Date.now();
     const frag = document.createDocumentFragment();
 
@@ -907,7 +966,8 @@ function buildEpgStrip(strip, sid) {
 
 async function selectChannel(ch) {
     currentChannel = ch;
-    document.querySelectorAll(".tl-row").forEach(r => r.classList.toggle("selected", r.dataset.sid === String(ch.stream_id)));
+    const _selSid = String(ch.stream_id);
+    rowCache.forEach((entry, sid) => entry.row.classList.toggle("selected", sid === _selSid));
     document.getElementById("preview-channel-name").textContent = ch.name || "Unknown";
     document.getElementById("pip-channel-name").textContent     = ch.name || "Unknown";
     const playUrl = ch._source === "m3u" ? m3uBuildLiveURL(ch) : xtreamBuildLiveURL(cfg, ch.stream_id);
@@ -915,19 +975,23 @@ async function selectChannel(ch) {
     setEPG("now", "Loading…", "", ""); setEPG("next", "—", "", "");
     document.getElementById("epg-bar-fill").style.width = "0%";
     showPreviewInfo();
+    showOSD();  // immediate banner on channel switch — EPG data populated below
 
     let listings = epgCache[ch.stream_id];
-    if (!listings) {
+    if (!listings && !epgBlocked) {
         epgCache[ch.stream_id] = null;
         try {
             listings = ch._source === "m3u"
                 ? await m3uGetEPG(ch.stream_id)
                 : await xtreamGetEPG(cfg, ch.stream_id);
-        } catch { listings = []; }
+        } catch (err) {
+            if (err && err.message && err.message.indexOf("403") !== -1) epgBlocked = true;
+            listings = [];
+        }
         epgCache[ch.stream_id] = listings;
         patchEpgStrip(ch.stream_id); scheduleEpgSave();
     }
-    if (!listings?.length) { setEPG("now", "No EPG data", "", ""); updateOSDIfFullscreen(); return; }
+    if (!listings?.length) { setEPG("now", "No EPG data", "", ""); showOSD(); return; }
 
     const now = Date.now();
     const idx = listings.findIndex(e => { const s = parseEpgTime(e.start), n = parseEpgTime(e.end); return now >= s && now < n; });
@@ -936,7 +1000,7 @@ async function selectChannel(ch) {
     setEPG("now", xtreamDecodeEPG(cur.title), formatTimeRange(cur.start, cur.end), xtreamDecodeEPG(cur.description));
     document.getElementById("epg-bar-fill").style.width = calcProgress(cur.start, cur.end) + "%";
     if (next) setEPG("next", xtreamDecodeEPG(next.title), formatTimeRange(next.start, next.end), "");
-    updateOSDIfFullscreen();
+    showOSD();
 }
 
 function updateOSDIfFullscreen() {
@@ -1058,169 +1122,28 @@ function loadXMLTVFromCache() {
 function mergeXMLTVIntoEpgCache() {
     if (!xmltvCache.programmes) return;
     const matchField = xmltvCache.matchField || "tvg-id";
+
+    // Build reverse name→xmlId map once instead of iterating per channel
+    const nameToXmlId = {};
+    for (const [xmlId, name] of Object.entries(xmltvCache.channelMap || {})) {
+        nameToXmlId[name.toLowerCase()] = xmlId;
+    }
+
     allChannels.forEach(ch => {
         const sid = String(ch.stream_id);
         let listings = null;
         if (matchField === "tvg-id") {
             const epgId = ch.epg_channel_id || "";
             listings = xmltvCache.programmes[epgId] || null;
-            if (!listings && epgId) {
-                for (const [xmlId, name] of Object.entries(xmltvCache.channelMap || {})) {
-                    if (name.toLowerCase() === (ch.name || "").toLowerCase()) {
-                        listings = xmltvCache.programmes[xmlId] || null; break;
-                    }
-                }
+            if (!listings) {
+                const xmlId = nameToXmlId[(ch.name || "").toLowerCase()];
+                if (xmlId) listings = xmltvCache.programmes[xmlId] || null;
             }
         } else {
-            for (const [xmlId, name] of Object.entries(xmltvCache.channelMap || {})) {
-                if (name.toLowerCase() === (ch.name || "").toLowerCase()) {
-                    listings = xmltvCache.programmes[xmlId] || null; break;
-                }
-            }
+            const xmlId = nameToXmlId[(ch.name || "").toLowerCase()];
+            if (xmlId) listings = xmltvCache.programmes[xmlId] || null;
         }
         if (listings) epgCache[sid] = listings;
-    });
-}
-
-
-// ── Auto-updater ──────────────────────────────────────────────────────────────
-
-const MANIFEST_URL          = "https://github.com/sharktie/lg-iptv/releases/latest/download/manifest.json";
-const MANIFEST_FALLBACK_URL = "https://raw.githubusercontent.com/sharktie/lg-iptv/main/manifest.json";
-
-function compareVersions(v1, v2) {
-    const a = String(v1).split(".").map(Number);
-    const b = String(v2).split(".").map(Number);
-    for (let i = 0; i < Math.max(a.length, b.length); i++) {
-        const diff = (a[i] || 0) - (b[i] || 0);
-        if (diff !== 0) return diff > 0 ? 1 : -1;
-    }
-    return 0;
-}
-
-async function fetchWithTimeout(url, timeoutMs = 12000) {
-    const ctrl = new AbortController();
-    const tid  = setTimeout(() => ctrl.abort(), timeoutMs);
-    try {
-        const res = await fetch(url, { signal: ctrl.signal, cache: "no-store" });
-        clearTimeout(tid);
-        return res;
-    } catch (err) {
-        clearTimeout(tid);
-        throw err;
-    }
-}
-
-async function fetchRemoteManifest() {
-    try {
-        const res = await fetchWithTimeout(`${MANIFEST_URL}?t=${Date.now()}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return await res.json();
-    } catch (_) {}
-    const res = await fetchWithTimeout(`${MANIFEST_FALLBACK_URL}?t=${Date.now()}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-}
-
-async function checkForUpdates() {
-    try {
-        const localRes = await fetchWithTimeout("../appinfo.json");
-        if (!localRes.ok) return;
-        const localInfo = await localRes.json();
-        const manifest  = await fetchRemoteManifest();
-        if (!manifest?.version) return;
-        if (compareVersions(manifest.version, localInfo.version) > 0) {
-            showUpdatePrompt(localInfo.version, manifest.version, manifest.ipkUrl || manifest.ipk_url);
-        }
-    } catch (_) {}
-}
-
-function showUpdatePrompt(currentVersion, newVersion, ipkUrl) {
-    const overlay = document.createElement("div");
-    overlay.className = "modal-overlay";
-    overlay.id = "update-modal";
-    overlay.innerHTML = `
-        <div class="modal-box update-modal-box">
-            <div class="update-modal-icon">📺</div>
-            <div class="modal-heading">Update Available</div>
-            <div class="update-modal-versions">
-                <span class="update-ver-old">v${currentVersion}</span>
-                <span class="update-ver-arrow">→</span>
-                <span class="update-ver-new">v${newVersion}</span>
-            </div>
-            <p class="update-modal-desc">A new version of LiveTV is ready to install. The app will restart automatically after updating.</p>
-            <div class="modal-btns update-modal-btns">
-                <button class="modal-btn" id="update-later-btn">Later</button>
-                <button class="modal-btn modal-btn-ok" id="update-now-btn">⬇ Update Now</button>
-            </div>
-            <div id="update-progress" class="update-progress" style="display:none">
-                <div class="update-progress-bar"><div class="update-progress-fill" id="update-progress-fill"></div></div>
-                <div class="update-progress-msg" id="update-progress-msg">Installing…</div>
-            </div>
-        </div>`;
-    document.body.appendChild(overlay);
-
-    const laterBtn    = overlay.querySelector("#update-later-btn");
-    const nowBtn      = overlay.querySelector("#update-now-btn");
-    const progressBox = overlay.querySelector("#update-progress");
-
-    laterBtn.addEventListener("click", () => overlay.remove());
-
-    nowBtn.addEventListener("click", () => {
-        laterBtn.disabled = true; nowBtn.disabled = true; nowBtn.textContent = "Installing…";
-        progressBox.style.display = "block";
-        setUpdateProgress(10, "Downloading update…");
-        installUpdate(ipkUrl, (pct, msg) => setUpdateProgress(pct, msg))
-            .then(() => {
-                setUpdateProgress(100, "Install complete — restarting…");
-                setTimeout(() => {
-                    try { webOS.platformBack(); } catch (_) {}
-                    try { window.close(); } catch (_) {}
-                }, 2000);
-            })
-            .catch(err => {
-                setUpdateProgress(0, "");
-                progressBox.style.display = "none";
-                laterBtn.disabled = false; nowBtn.disabled = false; nowBtn.textContent = "⬇ Update Now";
-                showUpdateError(overlay, err);
-            });
-    });
-
-    setTimeout(() => {
-        document.querySelectorAll(".tv-focus-visible").forEach(el => el.classList.remove("tv-focus-visible"));
-        nowBtn.classList.add("tv-focus-visible");
-        nowBtn.focus({ preventScroll: true });
-    }, 80);
-}
-
-function setUpdateProgress(pct, msg) {
-    const fill = document.getElementById("update-progress-fill");
-    const text = document.getElementById("update-progress-msg");
-    if (fill) fill.style.width = pct + "%";
-    if (text) text.textContent = msg;
-}
-
-function showUpdateError(overlay, err) {
-    let errBox = overlay.querySelector(".update-error-msg");
-    if (!errBox) {
-        errBox = document.createElement("div"); errBox.className = "update-error-msg";
-        overlay.querySelector(".update-modal-box").appendChild(errBox);
-    }
-    errBox.textContent = "Install failed: " + (err?.message || String(err));
-}
-
-function installUpdate(ipkUrl, onProgress) {
-    return new Promise((resolve, reject) => {
-        if (typeof webOS === "undefined" || !webOS.service) {
-            reject(new Error("webOS service not available")); return;
-        }
-        onProgress && onProgress(30, "Requesting install service…");
-        webOS.service.request("luna://com.webos.appInstallService/dev/install", {
-            method: "install",
-            parameters: { id: "com.sharktie.iptv", ipkUrl },
-            onSuccess: res  => { onProgress && onProgress(90, "Finalising…"); resolve(res); },
-            onFailure: err2 => { reject(new Error(err2?.errorText || err2?.errorCode || JSON.stringify(err2))); }
-        });
     });
 }
 
@@ -1231,24 +1154,27 @@ window.onload = function () {
     // ── Load active profile into IPTV_CONFIG ──────────────────────────────────
     // Prefer the profiles system; fall back to legacy iptv_custom_config.
     (function loadActiveProfile() {
-        const profiles = load("iptv_profiles", null);
-        if (profiles && profiles.length) {
-            const activeId = load("iptv_active_profile", null);
-            const profile  = (activeId && profiles.find(p => p.id === activeId)) || profiles[0];
-            if (profile) {
-                const resolvedUrl = load("iptv_active_resolved_url", null);
-                window.IPTV_CONFIG = {
-                    server_url:  resolvedUrl || profile.server_urls[0] || "",
-                    server_urls: profile.server_urls || [],
-                    username:    profile.username || "",
-                    password:    profile.password || "",
-                };
-                return;
+        try {
+            const profiles = load("iptv_profiles", null);
+            if (profiles && profiles.length) {
+                const activeId = load("iptv_active_profile", null);
+                const profile  = (activeId && profiles.find(p => p.id === activeId)) || profiles[0];
+                if (profile) {
+                    const resolvedUrl = load("iptv_active_resolved_url", null);
+                    const urls        = Array.isArray(profile.server_urls) ? profile.server_urls : [];
+                    window.IPTV_CONFIG = {
+                        server_url:  resolvedUrl || urls[0] || "",
+                        server_urls: urls,
+                        username:    profile.username || "",
+                        password:    profile.password || "",
+                    };
+                    return;
+                }
             }
-        }
-        // Legacy fallback
-        const savedCfg = load("iptv_custom_config", null);
-        if (savedCfg && savedCfg.server_url) window.IPTV_CONFIG = savedCfg;
+            // Legacy fallback
+            const savedCfg = load("iptv_custom_config", null);
+            if (savedCfg && savedCfg.server_url) window.IPTV_CONFIG = savedCfg;
+        } catch (_) {}
     }());
 
     loadXMLTVFromCache();
@@ -1256,8 +1182,6 @@ window.onload = function () {
     initVirtualScroll();
     initTVNavigation();
     initApp();
-
-    setTimeout(checkForUpdates, 2000);
 
     if (load("iptv_custom_epg_url", "")) {
         setTimeout(() => mergeXMLTVIntoEpgCache(), 2000);
