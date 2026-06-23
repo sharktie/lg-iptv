@@ -28,159 +28,211 @@
             </div>
         </div>
 
-        <!-- Tab strip — M3U tab removed -->
+        <!-- Tab strip -->
         <div id="tab-strip" role="tablist">
             <button class="tab-btn active" data-value="profiles" role="tab" aria-selected="true">Profiles</button>
-            <button class="tab-btn" data-value="epg"      role="tab" aria-selected="false">EPG</button>
-            <button class="tab-btn" data-value="cache"    role="tab" aria-selected="false">Cache</button>
+            <button class="tab-btn" data-value="epg"     role="tab" aria-selected="false">EPG</button>
+            <button class="tab-btn" data-value="livetv"  role="tab" aria-selected="false">Live TV</button>
+            <button class="tab-btn" data-value="vod"     role="tab" aria-selected="false">VOD</button>
+            <button class="tab-btn" data-value="cache"   role="tab" aria-selected="false">Cache</button>
         </div>
 
-        <!-- ═══════════════════════════════════════
-             Panel: Profiles
-             ═══════════════════════════════════════ -->
-        <div class="settings-panel active" id="panel-profiles" role="tabpanel">
-            <div id="profiles-layout">
+        <!-- Body row: panels on left, QR panel always on right -->
+        <div id="settings-body">
 
-                <!-- Left: profile list -->
-                <div id="profiles-sidebar">
-                    <div id="profiles-list" role="listbox" aria-label="Profiles"></div>
-                    <button class="settings-btn settings-btn-secondary" id="add-profile-btn">
-                        + New Profile
-                    </button>
-                </div>
+            <!-- ── Panels ── -->
+            <div id="panels-wrap">
 
-                <!-- Right: editor -->
-                <div id="profile-editor">
+                <!-- Panel: Profiles -->
+                <div class="settings-panel active" id="panel-profiles" role="tabpanel">
+                    <div id="profiles-layout">
 
-                    <div id="editor-empty">
-                        <p>Select a profile to edit,<br>or create a new one.</p>
-                    </div>
-
-                    <div id="editor-form" hidden>
-
-                        <!-- Profile name + delete -->
-                        <div id="editor-header">
-                            <div class="field-group" style="flex:1">
-                                <label class="field-label" for="prof-name">Profile Name</label>
-                                <input class="settings-input" id="prof-name" type="text"
-                                       placeholder="e.g. My IPTV Service" spellcheck="false" autocomplete="off" />
-                            </div>
-                            <button class="settings-btn settings-btn-danger" id="delete-profile-btn">Delete</button>
+                        <!-- Left: profile list -->
+                        <div id="profiles-sidebar">
+                            <div id="profiles-list" role="listbox" aria-label="Profiles"></div>
+                            <button class="settings-btn settings-btn-secondary" id="add-profile-btn">
+                                + New Profile
+                            </button>
                         </div>
 
-                        <!-- Source type toggle -->
-                        <div id="type-toggle">
-                            <button class="type-btn type-active" id="type-xtream-btn">Xtream</button>
-                            <button class="type-btn" id="type-m3u-btn">M3U</button>
-                        </div>
-
-                        <!-- Xtream fields -->
-                        <div id="xtream-fields">
-                            <div class="field-row">
-                                <div class="field-group">
-                                    <label class="field-label" for="prof-username">Username</label>
-                                    <input class="settings-input" id="prof-username" type="text"
-                                           placeholder="username" spellcheck="false" autocomplete="off" />
-                                </div>
-                                <div class="field-group">
-                                    <label class="field-label" for="prof-password">Password</label>
-                                    <input class="settings-input" id="prof-password" type="password"
-                                           placeholder="password" autocomplete="off" />
-                                </div>
-                            </div>
-
-                            <div id="url-section">
-                                <div class="field-label" style="margin-bottom:8px">
-                                    Server URLs <span class="field-hint">(tried in order)</span>
-                                </div>
-                                <div id="url-list"></div>
-                                <button class="settings-btn settings-btn-secondary" id="add-url-btn" style="margin-top:8px">
-                                    + Add URL
+                        <!-- Right: editor -->
+                        <div id="profile-editor">
+                            <div id="editor-empty">
+                                <p>No profiles yet.<br>Create one to get started.</p>
+                                <button class="settings-btn settings-btn-primary" id="empty-add-profile-btn">
+                                    + New Profile
                                 </button>
                             </div>
-                        </div>
 
-                        <!-- M3U fields -->
-                        <div id="m3u-fields" style="display:none">
-                            <div class="field-group">
-                                <label class="field-label" for="prof-m3u-url">Playlist URL</label>
-                                <input class="settings-input" id="prof-m3u-url" type="text"
-                                       placeholder="http://example.com/playlist.m3u8" spellcheck="false" />
-                            </div>
-                        </div>
+                            <div id="editor-form" hidden>
 
-                        <!-- EPG (shared) -->
-                        <div id="prof-epg-section">
-                            <div class="field-label" style="margin-bottom:8px">EPG <span class="field-hint">(optional)</span></div>
-                            <div class="field-group" style="margin-bottom:10px">
-                                <label class="field-label" for="prof-epg-url">XMLTV URL</label>
-                                <input class="settings-input" id="prof-epg-url" type="text"
-                                       placeholder="http://example.com/epg.xml" spellcheck="false" />
-                            </div>
-                            <div class="field-group">
-                                <label class="field-label" for="prof-epg-match">Match channels by</label>
-                                <select class="settings-input settings-select" id="prof-epg-match">
-                                    <option value="tvg-id">tvg-id / epg_channel_id</option>
-                                    <option value="name">Channel name</option>
-                                </select>
-                            </div>
-                        </div>
+                                <!-- Profile name + delete -->
+                                <div id="editor-header">
+                                    <div class="field-group" style="flex:1">
+                                        <label class="field-label" for="prof-name">Profile Name</label>
+                                        <input class="settings-input" id="prof-name" type="text"
+                                               placeholder="e.g. My IPTV Service" spellcheck="false" autocomplete="off" />
+                                    </div>
+                                    <button class="settings-btn settings-btn-danger" id="delete-profile-btn">Delete</button>
+                                </div>
 
-                        <div id="editor-actions">
-                            <button class="settings-btn settings-btn-primary" id="save-profile-btn">Save &amp; Connect</button>
-                            <div id="profile-status" class="settings-status"></div>
-                        </div>
+                                <!-- Source type toggle -->
+                                <div id="type-toggle">
+                                    <button class="type-btn type-active" id="type-xtream-btn">Xtream</button>
+                                    <button class="type-btn" id="type-m3u-btn">M3U</button>
+                                </div>
 
-                    </div><!-- /editor-form -->
-                </div><!-- /profile-editor -->
-            </div><!-- /profiles-layout -->
-        </div>
+                                <!-- Xtream fields -->
+                                <div id="xtream-fields">
+                                    <div class="field-row">
+                                        <div class="field-group">
+                                            <label class="field-label" for="prof-username">Username</label>
+                                            <input class="settings-input" id="prof-username" type="text"
+                                                   placeholder="username" spellcheck="false" autocomplete="off" />
+                                        </div>
+                                        <div class="field-group">
+                                            <label class="field-label" for="prof-password">Password</label>
+                                            <input class="settings-input" id="prof-password" type="password"
+                                                   placeholder="password" autocomplete="off" />
+                                        </div>
+                                    </div>
 
-        <!-- Panel: EPG (global fallback) -->
-        <div class="settings-panel" id="panel-epg" role="tabpanel">
-            <p class="panel-hint">Global EPG fallback used when no profile-specific EPG is set.</p>
-            <div class="field-group">
-                <label class="field-label" for="cfg-epg-url">XMLTV URL</label>
-                <input class="settings-input" id="cfg-epg-url" type="text"
-                       placeholder="http://example.com/epg.xml" spellcheck="false" />
-            </div>
-            <div class="field-group">
-                <label class="field-label" for="cfg-epg-match">Match channels by</label>
-                <select class="settings-input settings-select" id="cfg-epg-match">
-                    <option value="tvg-id">tvg-id / epg_channel_id</option>
-                    <option value="name">Channel name</option>
-                </select>
-            </div>
-            <button class="settings-btn settings-btn-secondary" id="cfg-epg-load-btn">Save EPG Settings</button>
-            <div id="epg-load-status" class="settings-status"></div>
-        </div>
+                                    <div id="url-section">
+                                        <div class="field-label" style="margin-bottom:8px">
+                                            Server URLs <span class="field-hint">(tried in order)</span>
+                                        </div>
+                                        <div id="url-list"></div>
+                                        <button class="settings-btn settings-btn-secondary" id="add-url-btn" style="margin-top:8px">
+                                            + Add URL
+                                        </button>
+                                    </div>
+                                </div>
 
-        <!-- Panel: Cache -->
-        <div class="settings-panel" id="panel-cache" role="tabpanel">
-            <p class="panel-hint">Clear cached data to force a fresh fetch on next launch.</p>
-            <div class="cache-actions">
-                <div class="cache-row">
-                    <div class="cache-info">
-                        <span class="cache-label">Channel Cache</span>
-                        <span class="cache-desc">Categories and channel list</span>
+                                <!-- M3U fields -->
+                                <div id="m3u-fields" style="display:none">
+                                    <div class="field-group">
+                                        <label class="field-label" for="prof-m3u-url">Playlist URL</label>
+                                        <input class="settings-input" id="prof-m3u-url" type="text"
+                                               placeholder="http://example.com/playlist.m3u8" spellcheck="false" />
+                                    </div>
+                                </div>
+
+                                <!-- EPG (shared) -->
+                                <div id="prof-epg-section">
+                                    <div class="field-label" style="margin-bottom:8px">EPG <span class="field-hint">(optional)</span></div>
+                                    <div class="field-group" style="margin-bottom:10px">
+                                        <label class="field-label" for="prof-epg-url">XMLTV URL</label>
+                                        <input class="settings-input" id="prof-epg-url" type="text"
+                                               placeholder="http://example.com/epg.xml" spellcheck="false" />
+                                    </div>
+                                    <div class="field-group">
+                                        <label class="field-label" for="prof-epg-match">Match channels by</label>
+                                        <select class="settings-input settings-select" id="prof-epg-match">
+                                            <option value="tvg-id">tvg-id / epg_channel_id</option>
+                                            <option value="name">Channel name</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div id="editor-actions">
+                                    <button class="settings-btn settings-btn-primary" id="save-profile-btn">Save &amp; Connect</button>
+                                    <div id="profile-status" class="settings-status"></div>
+                                </div>
+
+                            </div><!-- /editor-form -->
+                        </div><!-- /profile-editor -->
+                    </div><!-- /profiles-layout -->
+                </div><!-- /panel-profiles -->
+
+                <!-- Panel: EPG -->
+                <div class="settings-panel" id="panel-epg" role="tabpanel">
+                    <p class="panel-hint">Global EPG fallback used when no profile-specific EPG is set.</p>
+                    <div class="field-group">
+                        <label class="field-label" for="cfg-epg-url">XMLTV URL</label>
+                        <input class="settings-input" id="cfg-epg-url" type="text"
+                               placeholder="http://example.com/epg.xml" spellcheck="false" />
                     </div>
-                    <button class="settings-btn settings-btn-danger" id="cfg-clear-cache-btn">Clear</button>
-                </div>
-                <div id="cfg-clear-ch-status" class="settings-status"></div>
-                <div class="cache-row">
-                    <div class="cache-info">
-                        <span class="cache-label">EPG Cache</span>
-                        <span class="cache-desc">Programme guide data</span>
+                    <div class="field-group">
+                        <label class="field-label" for="cfg-epg-match">Match channels by</label>
+                        <select class="settings-input settings-select" id="cfg-epg-match">
+                            <option value="tvg-id">tvg-id / epg_channel_id</option>
+                            <option value="name">Channel name</option>
+                        </select>
                     </div>
-                    <button class="settings-btn settings-btn-danger" id="cfg-clear-epg-btn">Clear</button>
+                    <button class="settings-btn settings-btn-secondary" id="cfg-epg-load-btn">Save EPG Settings</button>
+                    <div id="epg-load-status" class="settings-status"></div>
                 </div>
-                <div id="cfg-clear-epg-status" class="settings-status"></div>
+
+                <!-- Panel: Live TV -->
+                <div class="settings-panel" id="panel-livetv" role="tabpanel">
+                    <p class="panel-hint">Hidden categories won't appear in the sidebar or channel list.</p>
+                    <div id="livetv-cats-wrap"></div>
+                    <p id="livetv-cats-empty" class="panel-hint" style="display:none">
+                        No categories cached yet — open Live TV first, then come back here.
+                    </p>
+                </div>
+
+                <!-- Panel: VOD -->
+                <div class="settings-panel" id="panel-vod" role="tabpanel">
+                    <p class="panel-hint">Hidden categories won't appear in the VOD browser.</p>
+                    <div id="vod-movies-wrap">
+                        <div class="cat-section-label">Movies</div>
+                        <div id="vod-movie-cats-wrap"></div>
+                    </div>
+                    <div id="vod-series-wrap" style="margin-top:18px">
+                        <div class="cat-section-label">Series</div>
+                        <div id="vod-series-cats-wrap"></div>
+                    </div>
+                    <p id="vod-cats-empty" class="panel-hint" style="display:none">
+                        No VOD categories cached yet — open VOD first, then come back here.
+                    </p>
+                </div>
+
+                <!-- Panel: Cache -->
+                <div class="settings-panel" id="panel-cache" role="tabpanel">
+                    <p class="panel-hint">Clear cached data to force a fresh fetch on next launch.</p>
+                    <div class="cache-actions">
+                        <div class="cache-row">
+                            <div class="cache-info">
+                                <span class="cache-label">Channel Cache</span>
+                                <span class="cache-desc">Categories and channel list</span>
+                            </div>
+                            <button class="settings-btn settings-btn-danger" id="cfg-clear-cache-btn">Clear</button>
+                        </div>
+                        <div id="cfg-clear-ch-status" class="settings-status"></div>
+                        <div class="cache-row">
+                            <div class="cache-info">
+                                <span class="cache-label">EPG Cache</span>
+                                <span class="cache-desc">Programme guide data</span>
+                            </div>
+                            <button class="settings-btn settings-btn-danger" id="cfg-clear-epg-btn">Clear</button>
+                        </div>
+                        <div id="cfg-clear-epg-status" class="settings-status"></div>
+                    </div>
+                </div>
+
+            </div><!-- /panels-wrap -->
+
+            <!-- QR panel — always visible, right of all panels -->
+            <div id="remote-qr-section">
+                <div id="remote-qr-inner">
+                    <p class="remote-qr-hint">Scan on your phone or computer to configure settings remotely.</p>
+                    <div id="remote-qr-wrap">
+                        <img id="remote-qr-img" src="" alt="QR Code" width="190" height="190" />
+                    </div>
+                    <div id="remote-qr-url"></div>
+                    <div id="remote-qr-status" class="settings-status"></div>
+                    <button class="settings-btn settings-btn-secondary" id="remote-new-code-btn">New Code</button>
+                </div>
             </div>
-        </div>
+
+        </div><!-- /settings-body -->
 
     </div><!-- /settings-modal -->
 </div><!-- /settings-page -->
 
+<script src="../dist/js/polyfills.js"></script>
+<script src="../assets/qrcode.js"></script>
 <script src="../config/config.js"></script>
 <script src="../dist/api/xtream.js"></script>
 <script src="../dist/api/m3u.js"></script>

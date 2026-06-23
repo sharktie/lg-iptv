@@ -167,6 +167,28 @@
     background: rgba(59,130,246,0.16);
 }
 
+/* ── Settings body: panels + QR side-by-side ─────────────────────────────────── */
+#settings-body {
+    display: -webkit-box;
+    display: flex;
+    -webkit-box-flex: 1;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+#panels-wrap {
+    -webkit-box-flex: 1;
+    flex: 1;
+    min-width: 0;
+    display: -webkit-box;
+    display: flex;
+    -webkit-box-orient: vertical;
+    -webkit-box-direction: normal;
+    flex-direction: column;
+    overflow: hidden;
+}
+
 /* ── Panels ──────────────────────────────────────────────────────────────────── */
 .settings-panel {
     display: none;
@@ -181,6 +203,7 @@
 .settings-panel::-webkit-scrollbar { width: 5px; }
 .settings-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
 .settings-panel.active {
+    display: -webkit-box;
     display: flex;
     animation: panelIn 0.2s ease both;
 }
@@ -322,11 +345,14 @@
 /* Right editor area */
 #profile-editor {
     flex: 1;
+    display: -webkit-box;
     display: flex;
+    -webkit-box-orient: vertical;
+    -webkit-box-direction: normal;
     flex-direction: column;
     min-width: 0;
     overflow-y: auto;
-    padding: 22px 26px 24px;
+    padding: 22px 24px 24px;
     scrollbar-width: thin;
     scrollbar-color: rgba(255,255,255,0.08) transparent;
 }
@@ -335,13 +361,26 @@
 
 #editor-empty {
     flex: 1;
+    display: -webkit-box;
     display: flex;
+    -webkit-box-orient: vertical;
+    -webkit-box-direction: normal;
+    flex-direction: column;
+    -webkit-box-align: center;
     align-items: center;
+    -webkit-box-pack: center;
     justify-content: center;
+    gap: 8px;
     color: var(--text-faint, #565b6e);
     font-size: 14px;
     text-align: center;
     line-height: 1.7;
+}
+#editor-empty p { margin: 0; }
+#empty-add-profile-btn {
+    width: auto;
+    min-width: 180px;
+    margin-top: 12px;
 }
 
 #editor-form {
@@ -349,6 +388,9 @@
     flex-direction: column;
     gap: 18px;
 }
+/* The `display:flex` above otherwise overrides the [hidden] attribute, leaving
+   the form visible in the empty (no-profile) state. */
+#editor-form[hidden] { display: none; }
 
 #editor-header {
     display: flex;
@@ -630,4 +672,131 @@
 .cache-desc {
     font-size: 13px;
     color: var(--text-faint, #565b6e);
+}
+
+/* ── Remote QR — permanent right column ──────────────────────────────────────── */
+#remote-qr-section {
+    width: 230px;
+    -webkit-box-flex: 0;
+    flex-shrink: 0;
+    border-left: 1px solid rgba(255,255,255,0.06);
+    display: -webkit-box;
+    display: flex;
+}
+#remote-qr-inner {
+    width: 230px;
+    padding: 20px 16px 16px;
+    display: -webkit-box;
+    display: flex;
+    -webkit-box-orient: vertical;
+    -webkit-box-direction: normal;
+    flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+    height: 100%;
+    box-sizing: border-box;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.08) transparent;
+}
+#remote-qr-inner::-webkit-scrollbar { width: 4px; }
+#remote-qr-inner::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+
+.remote-qr-hint {
+    font-size: 12px;
+    color: var(--text-dim, #8a8a9a);
+    line-height: 1.5;
+    margin: 0;
+}
+#remote-qr-wrap {
+    display: -webkit-box;
+    display: flex;
+    -webkit-box-pack: center;
+    justify-content: center;
+}
+#remote-qr-img {
+    border-radius: 10px;
+    background: #fff;
+    padding: 8px;
+    display: block;
+}
+#remote-qr-url {
+    text-align: center;
+    font-size: 10px;
+    color: var(--text-dim, #8a8a9a);
+    word-break: break-all;
+}
+#remote-qr-status {
+    text-align: center;
+    min-height: 18px;
+}
+
+/* ── Category toggle rows (Live TV & VOD panels) ─────────────────────────────── */
+.cat-section-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-dim, #8a8a9a);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 10px;
+}
+.cat-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 11px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.05);
+    background: rgba(255,255,255,0.02);
+    margin-bottom: 6px;
+    transition: background 0.15s, border-color 0.15s;
+}
+.cat-toggle-row.hidden-cat {
+    background: rgba(229,0,30,0.07);
+    border-color: rgba(229,0,30,0.2);
+}
+.cat-toggle-name {
+    font-size: 14px;
+    color: var(--text, #f0f0f5);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-right: 12px;
+}
+.cat-toggle-row.hidden-cat .cat-toggle-name {
+    color: var(--text-dim, #8a8a9a);
+    text-decoration: line-through;
+}
+.cat-toggle-btn {
+    width: 42px;
+    height: 24px;
+    border-radius: 12px;
+    border: none;
+    background: rgba(255,255,255,0.12);
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+    transition: background 0.2s;
+}
+.cat-toggle-btn[aria-pressed="true"] {
+    background: var(--accent, #e5001e);
+}
+.cat-toggle-knob {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    transition: left 0.2s;
+    pointer-events: none;
+}
+.cat-toggle-btn[aria-pressed="true"] .cat-toggle-knob {
+    left: 21px;
+}
+.cat-toggle-btn.tv-focus-visible {
+    box-shadow: 0 0 0 3px rgba(229,0,30,0.5);
+    outline: none;
 }

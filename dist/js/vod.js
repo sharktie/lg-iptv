@@ -129,6 +129,20 @@
   /* ── State ──────────────────────────────────────────────────────── */
   var cfg = null;
   var allItems = [];
+  var _hiddenVodM = new Set(function () {
+    try {
+      return JSON.parse(localStorage.getItem('iptv_hidden_cats_vod_m') || '[]');
+    } catch (e) {
+      return [];
+    }
+  }().map(String));
+  var _hiddenVodS = new Set(function () {
+    try {
+      return JSON.parse(localStorage.getItem('iptv_hidden_cats_vod_s') || '[]');
+    } catch (e) {
+      return [];
+    }
+  }().map(String));
   var searchQuery = '';
   var activeType = 'movie';
   var activeCatId = null;
@@ -295,13 +309,19 @@
 
   /* Render sidebar as soon as movie cats arrive (usually first) */
   movieCatsPromise.then(function (cats) {
-    groups[1].cats = Array.isArray(cats) ? cats : [];
+    var all = Array.isArray(cats) ? cats : [];
+    groups[1].cats = _hiddenVodM.size ? all.filter(function (c) {
+      return !_hiddenVodM.has(String(c.category_id));
+    }) : all;
     renderSidebar();
   });
 
   /* Then update with series cats */
   seriesCatsPromise.then(function (cats) {
-    groups[2].cats = Array.isArray(cats) ? cats : [];
+    var all = Array.isArray(cats) ? cats : [];
+    groups[2].cats = _hiddenVodS.size ? all.filter(function (c) {
+      return !_hiddenVodS.has(String(c.category_id));
+    }) : all;
     renderSidebar();
   });
 

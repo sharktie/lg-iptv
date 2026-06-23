@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Series — IPTV</title>
+    <meta name="theme-color" content="#08090d" />
+    <link rel="stylesheet" href="../assets/base.css" />
+    <style>
+        #series-page {
+            min-height: 100vh; background: var(--bg, #08090d);
+            color: var(--text, #f0f0f5); padding: 28px 40px 60px;
+            font-family: 'Outfit', 'Segoe UI', system-ui, sans-serif;
+        }
+        #series-header { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+        #series-back-btn {
+            width: 46px; height: 46px; flex-shrink: 0; display: flex;
+            align-items: center; justify-content: center;
+            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px; color: var(--text-dim, #8a8f9e); cursor: pointer;
+            transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+        }
+        #series-back-btn.tv-focus-visible {
+            background: rgba(59,130,246,0.15); border-color: var(--accent, #3b82f6);
+            color: #fff; box-shadow: 0 0 0 3px rgba(59,130,246,0.35); outline: none;
+        }
+        #series-title { font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
+        #series-msg {
+            display: none; align-items: center; justify-content: center;
+            min-height: 200px; color: var(--text-faint, #565b6e); font-size: 16px;
+        }
+        #episode-list { display: flex; flex-direction: column; gap: 6px; max-width: 760px; }
+        .season-label {
+            font-size: 13px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.08em; color: var(--text-dim, #8a8f9e);
+            margin: 18px 0 6px;
+        }
+        .episode-row {
+            display: flex; align-items: center; width: 100%; text-align: left;
+            padding: 14px 18px; background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06); border-radius: 12px;
+            color: var(--text, #f0f0f5); font-size: 16px; cursor: pointer;
+            font-family: inherit; transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
+        }
+        .episode-row:hover { background: rgba(255,255,255,0.06); }
+        .episode-row.tv-focus-visible {
+            background: rgba(59,130,246,0.12); border-color: var(--accent, #3b82f6);
+            box-shadow: 0 0 0 2px rgba(59,130,246,0.4); outline: none;
+        }
+        .episode-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    </style>
+</head>
+<body>
+
+<div id="series-page">
+    <div id="series-header">
+        <button id="series-back-btn" title="Back">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path d="M13 4L7 10L13 16" stroke="currentColor" stroke-width="2.4"
+                      stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
+        <span id="series-title">Series</span>
+    </div>
+
+    <div id="series-msg"></div>
+    <div id="episode-list"></div>
+</div>
+
+<script src="../dist/js/polyfills.js"></script>
+<script src="../config/config.js"></script>
+<script src="../dist/js/series.js"></script>
+</body>
+</html>

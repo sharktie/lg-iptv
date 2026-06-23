@@ -48,7 +48,9 @@ function _handleKey(e) {
   if (kc === 461) {
     // Back (webOS) — homepage is the root, so exit the app
     e.preventDefault();
-    tvGoBack(); // no URL → calls webOS.platformBack()
+    // tvGoBack lives in dpad.js/settings.js which aren't loaded here, so
+    // call the platform directly with a guard.
+    if (typeof webOS !== "undefined" && webOS.platformBack) webOS.platformBack();
     return;
   }
   if (kc === 13) {
@@ -112,9 +114,8 @@ window.addEventListener("load", function () {
   // Date display
   _updateDate();
 
-  // Notify webOS
-  // After
-  if (typeof webOSSystem !== 'undefined' && typeof webOSSystem.notifyAppLoaded === 'function') {
+  // Notify webOS the app finished loading (hides the splash screen)
+  if (typeof webOSSystem !== "undefined" && typeof webOSSystem.notifyAppLoaded === "function") {
     webOSSystem.notifyAppLoaded();
   }
 });

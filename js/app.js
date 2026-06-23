@@ -9,6 +9,7 @@ let favGroups      = load("iptv_fav_groups", []);
 let currentChannel = null;
 let epgLoadAbortKey = 0;
 let epgBlocked      = false;   // set true on first 403 — stops all further EPG requests
+let _hiddenCatsLive = new Set((load("iptv_hidden_cats_live", []) || []).map(String));
 let _keepScrollOnApply = false;
 
 const TIMELINE_HOURS = 3;
@@ -640,7 +641,8 @@ function renderCategories(categories) {
     allBtn.onclick = () => { activeCategory = "all"; activeFavGroup = "all"; updateSidebarActive(); applyFilters(); };
     container.appendChild(allBtn);
 
-    if (categories.length) {
+    const visibleCats = categories.filter(cat => !_hiddenCatsLive.has(String(cat.category_id)));
+    if (visibleCats.length) {
         const catSection = document.createElement("div");
         catSection.className = "cat-section"; catSection.id = "cat-section-cats";
         const catHdr = document.createElement("button");
@@ -650,7 +652,7 @@ function renderCategories(categories) {
         const catList = document.createElement("div");
         catList.className = "cat-section-list";
         const frag = document.createDocumentFragment();
-        categories.forEach(cat => {
+        visibleCats.forEach(cat => {
             const btn = document.createElement("button");
             btn.className = "cat-btn cat-sub-btn"; btn.dataset.catId = cat.category_id;
             btn.textContent = cat.category_name;
@@ -815,7 +817,9 @@ function getFilteredChannels() {
         }
         list = favList;
     } else if (activeCategory === "all") {
-        list = allChannels;
+        list = _hiddenCatsLive.size
+            ? allChannels.filter(ch => !_hiddenCatsLive.has(String(ch.category_id)))
+            : allChannels;
     } else {
         list = allChannels.filter(ch => String(ch.category_id) === String(activeCategory));
     }

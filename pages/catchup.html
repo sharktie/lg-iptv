@@ -17,17 +17,18 @@
             <div id="cs-sub">Coming soon</div>
         </div>
     </div>
+    <!-- Inline script kept ES5 (not Babel-transpiled) for old-WebOS compat. -->
     <script>
-        const meta = {
+        var meta = {
             vod:      { icon: "🎬", title: "VOD" },
             catchup:  { icon: "⏮",  title: "Catch-up" },
             settings: { icon: "⚙",  title: "Settings" }
         };
-        const page = "catchup";
+        var page = "catchup";
         document.getElementById("cs-icon").textContent  = meta[page].icon;
         document.getElementById("cs-title").textContent = meta[page].title;
-        document.getElementById("back-btn").addEventListener("click", () => history.back());
-        window.addEventListener("keydown", e => {
+        document.getElementById("back-btn").addEventListener("click", function () { history.back(); });
+        window.addEventListener("keydown", function (e) {
             if (e.keyCode === 461 || e.keyCode === 8) { e.preventDefault(); history.back(); }
         });
         document.getElementById("back-btn").classList.add("tv-focus-visible");
