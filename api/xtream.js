@@ -30,9 +30,20 @@ function xtreamLoadConfig() {
 // Try each server URL in order until one responds. Returns { cfg, data } with
 // cfg.server_url set to the working URL, or null if all fail.
 async function xtreamLogin(cfg) {
-    const urls = cfg.server_urls && cfg.server_urls.length
+    const entered = cfg.server_urls && cfg.server_urls.length
         ? cfg.server_urls
         : [cfg.server_url].filter(Boolean);
+
+    // Try each URL, plus an http fallback for https entries — some servers use a
+    // cert/TLS the TV browser rejects, and http on the same host/port still works.
+    const urls = [];
+    entered.forEach(u => {
+        urls.push(u);
+        if (/^https:/i.test(u)) {
+            const alt = u.replace(/^https:/i, "http:");
+            if (urls.indexOf(alt) === -1) urls.push(alt);
+        }
+    });
 
     for (const url of urls) {
         try {

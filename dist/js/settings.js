@@ -426,13 +426,25 @@
         setStatus('profile-status', 'Could not reach any server URL. Check the address.', 'err');
       }
     }
+
+    /* For each https URL, also try http on the same host/port. Some servers
+       use a cert/TLS version the TV's browser rejects (even though a native
+       app accepts it) — http sidesteps that. https is always tried first. */
+    var tryList = [];
+    urls.forEach(function (u) {
+      tryList.push(u);
+      if (/^https:/i.test(u)) {
+        var alt = u.replace(/^https:/i, 'http:');
+        if (tryList.indexOf(alt) === -1) tryList.push(alt);
+      }
+    });
     (function tryUrls(index) {
-      if (index >= urls.length) {
+      if (index >= tryList.length) {
         reportFailure();
         return;
       }
-      var url = urls[index];
-      setStatus('profile-status', 'Trying ' + (index + 1) + '/' + urls.length + '…', '');
+      var url = tryList[index];
+      setStatus('profile-status', 'Trying ' + (index + 1) + '/' + tryList.length + '…', '');
       var loginUrl = url + '/player_api.php?username=' + encodeURIComponent(username) + '&password=' + encodeURIComponent(password);
       var ctrl = new AbortController();
       var tid = setTimeout(function () {
