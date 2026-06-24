@@ -39,7 +39,7 @@ async function xtreamLogin(cfg) {
             const base   = url.replace(/\/+$/, "");
             const result = await _fetchJSON(
                 `${base}/player_api.php?${_auth({ ...cfg, server_url: url })}`,
-                8000
+                12000
             );
             if (result) return { cfg: { ...cfg, server_url: url }, data: result };
         } catch (_) {}

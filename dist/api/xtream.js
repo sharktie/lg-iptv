@@ -94,7 +94,7 @@ function _xtreamLogin() {
           _context2.n = 4;
           return _fetchJSON("".concat(base, "/player_api.php?").concat(_auth(_objectSpread(_objectSpread({}, cfg), {}, {
             server_url: url
-          }))), 8000);
+          }))), 12000);
         case 4:
           result = _context2.v;
           if (!result) {

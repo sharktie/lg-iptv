@@ -437,7 +437,7 @@
       var ctrl = new AbortController();
       var tid = setTimeout(function () {
         ctrl.abort();
-      }, 8000);
+      }, 12000);
       fetch(loginUrl, {
         signal: ctrl.signal
       }).then(function (r) {
@@ -446,20 +446,31 @@
         return r.json();
       }).then(function (data) {
         var ui = data && data.user_info;
+        // Explicit failed login → server is fine, credentials are wrong.
+        if (ui && Number(ui.auth) === 0) {
+          reachedButAuthFailed = true;
+          tryUrls(index + 1);
+          return;
+        }
+        // Explicit success with an unusable account state.
         if (ui && Number(ui.auth) === 1) {
           var status = String(ui.status || 'Active');
           if (/expired|banned|disabled/i.test(status)) {
-            accountIssue = status; // creds fine, account not usable
+            accountIssue = status;
             reportFailure();
             return;
           }
           connectSuccess(url);
           return;
         }
-        // Server responded with an explicit failed login → creds wrong
-        if (ui && Number(ui.auth) === 0) reachedButAuthFailed = true;
-        // Otherwise the response wasn't a valid Xtream login → treat as
-        // an unreachable/invalid URL and move on.
+        // Any other parseable response counts as reachable + valid: some
+        // panels omit `auth` or use a different shape. Staying lenient here
+        // avoids falsely rejecting a working server (only an explicit
+        // auth:0 above is treated as bad credentials).
+        if (data) {
+          connectSuccess(url);
+          return;
+        }
         tryUrls(index + 1);
       }).catch(function () {
         clearTimeout(tid);
