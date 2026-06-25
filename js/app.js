@@ -591,13 +591,13 @@ function showOSD() {
     if (listings && listings.length) {
         const now = Date.now();
         const idx = listings.findIndex(e => {
-            const s = parseEpgTime(e.start), n = parseEpgTime(e.end);
+            const s = epgStart(e), n = epgEnd(e);
             return now >= s && now < n;
         });
         const cur  = listings[idx >= 0 ? idx     : 0];
         const next = listings[idx >= 0 ? idx + 1 : 1];
-        if (cur)  { nowTitle  = xtreamDecodeEPG(cur.title);  nowTime  = formatTimeRange(cur.start,  cur.end);  progress = calcProgress(cur.start, cur.end); }
-        if (next) { nextTitle = xtreamDecodeEPG(next.title); nextTime = formatTimeRange(next.start, next.end); }
+        if (cur)  { nowTitle  = xtreamDecodeEPG(cur.title);  nowTime  = formatTimeRange(cur);  progress = calcProgress(cur); }
+        if (next) { nextTitle = xtreamDecodeEPG(next.title); nextTime = formatTimeRange(next); }
     }
 
     document.getElementById("fs-osd-now-title").textContent  = nowTitle  || "—";
@@ -933,7 +933,7 @@ function buildEpgStrip(strip, sid) {
     const frag = document.createDocumentFragment();
 
     listings.forEach(e => {
-        const eStart = parseEpgTime(e.start), eEnd = parseEpgTime(e.end);
+        const eStart = epgStart(e), eEnd = epgEnd(e);
         if (eEnd <= tlStart || eStart >= tlEnd) return;
         const cs    = Math.max(eStart, tlStart), ce = Math.min(eEnd, tlEnd);
         const left  = ((cs - tlStart) / tlDur) * 100;
@@ -998,12 +998,12 @@ async function selectChannel(ch) {
     if (!listings?.length) { setEPG("now", "No EPG data", "", ""); showOSD(); return; }
 
     const now = Date.now();
-    const idx = listings.findIndex(e => { const s = parseEpgTime(e.start), n = parseEpgTime(e.end); return now >= s && now < n; });
+    const idx = listings.findIndex(e => { const s = epgStart(e), n = epgEnd(e); return now >= s && now < n; });
     const cur  = listings[idx >= 0 ? idx     : 0];
     const next = listings[idx >= 0 ? idx + 1 : 1];
-    setEPG("now", xtreamDecodeEPG(cur.title), formatTimeRange(cur.start, cur.end), xtreamDecodeEPG(cur.description));
-    document.getElementById("epg-bar-fill").style.width = calcProgress(cur.start, cur.end) + "%";
-    if (next) setEPG("next", xtreamDecodeEPG(next.title), formatTimeRange(next.start, next.end), "");
+    setEPG("now", xtreamDecodeEPG(cur.title), formatTimeRange(cur), xtreamDecodeEPG(cur.description));
+    document.getElementById("epg-bar-fill").style.width = calcProgress(cur) + "%";
+    if (next) setEPG("next", xtreamDecodeEPG(next.title), formatTimeRange(next), "");
     showOSD();
 }
 
@@ -1041,18 +1041,31 @@ const _epgTimeCache = Object.create(null);
 function parseEpgTime(s) {
     if (!s) return 0;
     if (_epgTimeCache[s] !== undefined) return _epgTimeCache[s];
+    // The `start`/`end` strings are in the provider's timezone (unknown), so we
+    // can't parse them reliably — used only as a fallback. Treated as UTC.
     return (_epgTimeCache[s] = new Date(s.replace(" ", "T") + "Z").getTime());
 }
+// Prefer the Unix-epoch timestamps: they're absolute UTC and unambiguous, which
+// avoids the constant timezone offset the localized strings caused.
+function epgStart(e) {
+    if (e && e.start_timestamp) return Number(e.start_timestamp) * 1000;
+    return parseEpgTime(e && e.start);
+}
+function epgEnd(e) {
+    const ts = e && (e.stop_timestamp || e.end_timestamp);
+    if (ts) return Number(ts) * 1000;
+    return parseEpgTime(e && e.end);
+}
 function fmtTime(ms) { return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
-function formatTimeRange(start, end) {
-    const a = fmtTime(parseEpgTime(start)), b = fmtTime(parseEpgTime(end));
+function formatTimeRange(e) {
+    const a = fmtTime(epgStart(e)), b = fmtTime(epgEnd(e));
     return a && b ? `${a} – ${b}` : (a || "");
 }
-function calcProgress(start, end) {
+function calcProgress(e) {
     try {
-        const s = parseEpgTime(start), e = parseEpgTime(end), now = Date.now();
-        if (now < s || now > e) return 0;
-        return Math.round(((now - s) / (e - s)) * 100);
+        const s = epgStart(e), en = epgEnd(e), now = Date.now();
+        if (now < s || now > en) return 0;
+        return Math.round(((now - s) / (en - s)) * 100);
     } catch { return 0; }
 }
 

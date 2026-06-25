@@ -1,11 +1,15 @@
-/* vod.js — VOD/Series browser, Netflix-style (WebOS)
-   ─────────────────────────────────────────────────────────────────── */
+/* vod.js — VOD / Series browser, Netflix/Disney+-style rails (WebOS)
+   ─────────────────────────────────────────────────────────────────────
+   - Horizontal category rails, lazy-loaded as they scroll into view
+   - Continue Watching rail (resume positions written by player-vod.js)
+   - Global search across the whole library
+   - Inline season/episode picker for series
+   ES5-friendly (Babel target Chrome 38); no flex `gap` / `inset`.            */
 (function () {
     'use strict';
 
-    /* ── Config ─────────────────────────────────────────────────────── */
+    /* ── Config (same resolution as app.js) ──────────────────────────── */
     function getCfg() {
-        // Profiles system (current)
         try {
             var profiles = JSON.parse(localStorage.getItem('iptv_profiles'));
             if (profiles && profiles.length) {
@@ -23,32 +27,37 @@
                 }
             }
         } catch (e) {}
-        // Legacy fallback
         try {
             var s = JSON.parse(localStorage.getItem('iptv_custom_config'));
             if (s && s.server_url) return s;
         } catch (e) {}
-        if (typeof IPTV_CONFIG !== 'undefined' && IPTV_CONFIG && IPTV_CONFIG.server_url)
-            return IPTV_CONFIG;
+        if (typeof IPTV_CONFIG !== 'undefined' && IPTV_CONFIG && IPTV_CONFIG.server_url) return IPTV_CONFIG;
         return null;
     }
 
+    var cfg = getCfg();
+
+    function base() { return (cfg.server_url || '').replace(/\/+$/, ''); }
     function apiUrl(params) {
-        var base = (cfg.server_url || '').replace(/\/+$/, '');
-        return base + '/player_api.php?username=' + encodeURIComponent(cfg.username) +
+        return base() + '/player_api.php?username=' + encodeURIComponent(cfg.username) +
                '&password=' + encodeURIComponent(cfg.password) + '&' + params;
     }
-
-    function buildMovieUrl(streamId, ext) {
-        var base = (cfg.server_url || '').replace(/\/+$/, '');
-        return base + '/movie/' + encodeURIComponent(cfg.username) + '/' +
-               encodeURIComponent(cfg.password) + '/' +
-               encodeURIComponent(streamId) + '.' + (ext || 'mp4');
+    function buildMovieUrl(id, ext) {
+        return base() + '/movie/' + encodeURIComponent(cfg.username) + '/' +
+               encodeURIComponent(cfg.password) + '/' + encodeURIComponent(id) + '.' + (ext || 'mp4');
+    }
+    function buildEpisodeUrl(id, ext) {
+        return base() + '/series/' + encodeURIComponent(cfg.username) + '/' +
+               encodeURIComponent(cfg.password) + '/' + encodeURIComponent(id) + '.' + (ext || 'mp4');
     }
 
-    /* ── Cache (5-hour TTL) ─────────────────────────────────────────── */
-    var CACHE_TTL = 5 * 60 * 60 * 1000;
+    function escHtml(s) {
+        return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
 
+    /* ── Cache (5h TTL) ──────────────────────────────────────────────── */
+    var CACHE_TTL = 5 * 60 * 60 * 1000;
     function cacheGet(key) {
         try {
             var raw = localStorage.getItem(key);
@@ -58,745 +67,701 @@
             return obj.data;
         } catch (e) { return null; }
     }
-
     function cacheSet(key, data) {
         try { localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data: data })); } catch (e) {}
     }
-
     function fetchJSON(url) {
-        return fetch(url).then(function (r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.json();
-        });
+        return fetch(url).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+    }
+    function fetchCached(key, url) {
+        var c = cacheGet(key);
+        if (c) return Promise.resolve(c);
+        return fetchJSON(url).then(function (d) { cacheSet(key, d); return d; });
     }
 
-    function fetchCached(cacheKey, url) {
-        var cached = cacheGet(cacheKey);
-        if (cached) return Promise.resolve(cached);
-        return fetchJSON(url).then(function (data) {
-            cacheSet(cacheKey, data);
-            return data;
-        });
+    /* ── Resume / Continue Watching ──────────────────────────────────── */
+    var PROGRESS_KEY = 'vod_progress';
+    function loadProgress() {
+        try { return JSON.parse(localStorage.getItem(PROGRESS_KEY)) || {}; } catch (e) { return {}; }
+    }
+    function continueWatching() {
+        var p = loadProgress(), out = [];
+        for (var k in p) {
+            if (!Object.prototype.hasOwnProperty.call(p, k)) continue;
+            var e = p[k];
+            if (!e || !e.dur || e.pos < 30) continue;            // ignore barely-started
+            if (e.pos / e.dur > 0.95) continue;                  // ignore finished
+            out.push(e);
+        }
+        out.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+        return out.slice(0, 20);
     }
 
-    /* ── Favourites ─────────────────────────────────────────────────── */
-    function loadFavs() {
-        try { return JSON.parse(localStorage.getItem('vod_favs')) || []; } catch (e) { return []; }
-    }
-    function saveFavs(f) {
-        try { localStorage.setItem('vod_favs', JSON.stringify(f)); } catch (e) {}
-    }
-    function isFav(type, catId) {
-        return loadFavs().some(function (f) { return f.type === type && f.catId === catId; });
-    }
-    function toggleFav(type, catId, catName) {
-        var favs = loadFavs();
-        var idx  = favs.findIndex(function (f) { return f.type === type && f.catId === catId; });
-        if (idx === -1) favs.push({ type: type, catId: catId, name: catName });
-        else            favs.splice(idx, 1);
-        saveFavs(favs);
-        renderSidebar();
-        setTimeout(function () {
-            var focusables = getFocusableItems();
-            var target = focusables.find(function (el) {
-                return el.dataset.type === type && el.dataset.catId === catId;
-            });
-            applyCatFocus(target ? focusables.indexOf(target) : catIndex);
-        }, 40);
-    }
+    /* ── State ───────────────────────────────────────────────────────── */
+    var activeType = 'movie';
+    var hidden = {
+        movie:  new Set((function () { try { return JSON.parse(localStorage.getItem('iptv_hidden_cats_vod_m') || '[]'); } catch (e) { return []; } }()).map(String)),
+        series: new Set((function () { try { return JSON.parse(localStorage.getItem('iptv_hidden_cats_vod_s') || '[]'); } catch (e) { return []; } }()).map(String))
+    };
+    var cats = { movie: null, series: null };     // category arrays per type
+    var RAIL_CAP = 40;                            // max cards rendered per rail
 
-    /* ── State ──────────────────────────────────────────────────────── */
-    var cfg         = null;
-    var allItems    = [];
-    var _hiddenVodM = new Set((function () { try { return JSON.parse(localStorage.getItem('iptv_hidden_cats_vod_m') || '[]'); } catch (e) { return []; } }()).map(String));
-    var _hiddenVodS = new Set((function () { try { return JSON.parse(localStorage.getItem('iptv_hidden_cats_vod_s') || '[]'); } catch (e) { return []; } }()).map(String));
-    var searchQuery = '';
-    var activeType  = 'movie';
-    var activeCatId = null;
-    var sortMode    = 'default';
+    /* ── DOM refs ────────────────────────────────────────────────────── */
+    var elRails    = document.getElementById('vod-rails');
+    var elStatus   = document.getElementById('vod-status');
+    var elStatusTx = document.getElementById('vod-status-text');
+    var elDetail   = document.getElementById('vod-detail');
+    var elSearch   = document.getElementById('vod-search-overlay');
+    var elSearchIn = document.getElementById('vod-search-input');
+    var elSearchGrid = document.getElementById('vod-search-grid');
 
-    var groups = [
-        { id: 'favs',   label: 'Favourites', cats: [], open: true,  special: true },
-        { id: 'movie',  label: 'Movies',     cats: [], open: true  },
-        { id: 'series', label: 'TV Series',  cats: [], open: false }
-    ];
-
-    var zone        = 'sidebar';
-    var catIndex    = 0;
-    var gridIndex   = 0;
-    var detailIndex = 0;
-
-    /* ── DOM refs ───────────────────────────────────────────────────── */
-    var elCatList       = document.getElementById('cat-list');
-    var elGrid          = document.getElementById('vod-grid');
-    var elLoading       = document.getElementById('vod-loading');
-    var elEmpty         = document.getElementById('vod-empty');
-    var elCatName       = document.getElementById('vod-cat-name');
-    var elCount         = document.getElementById('vod-count');
-    var elSearch        = document.getElementById('cat-search');
-    var elDetailOverlay = document.getElementById('detail-overlay');
-    var elBackBtn       = document.getElementById('back-btn');
-    var elFilterBar     = document.getElementById('vod-filter-bar');
-
-    /* ── Virtual / windowed grid ─────────────────────────────────────
-       Renders BATCH_SIZE cards at a time; appends more on scroll.
-       Cards use IntersectionObserver for lazy-loading poster images.  */
-    var BATCH_SIZE  = 48;
-    var _renderData = [];
-    var _renderPos  = 0;
-    var _imgObserver = null;
-
-    /* Set up IntersectionObserver once — after DOM refs are live */
-    if ('IntersectionObserver' in window) {
-        _imgObserver = new IntersectionObserver(function (entries) {
-            entries.forEach(function (entry) {
-                if (entry.isIntersecting) {
-                    var img = entry.target;
-                    if (img.dataset.src) {
-                        img.src = img.dataset.src;
-                        img.removeAttribute('data-src');
-                    }
-                    _imgObserver.unobserve(img);
+    /* ── Lazy image loader ───────────────────────────────────────────── */
+    var imgObserver = ('IntersectionObserver' in window)
+        ? new IntersectionObserver(function (entries) {
+            entries.forEach(function (en) {
+                if (en.isIntersecting) {
+                    var img = en.target;
+                    if (img.dataset.src) { img.src = img.dataset.src; img.removeAttribute('data-src'); }
+                    imgObserver.unobserve(img);
                 }
             });
-        }, { rootMargin: '200px' });
+        }, { rootMargin: '300px' })
+        : null;
+
+    function lazyImg(img, src) {
+        if (!src) return;
+        if (imgObserver) { img.dataset.src = src; imgObserver.observe(img); }
+        else { img.src = src; }
     }
 
-    function renderBatch() {
-        var end  = Math.min(_renderPos + BATCH_SIZE, _renderData.length);
-        var frag = document.createDocumentFragment();
-        for (var i = _renderPos; i < end; i++) frag.appendChild(makeCard(_renderData[i]));
-        elGrid.appendChild(frag);
-        _renderPos = end;
-    }
+    /* ── Card factory ────────────────────────────────────────────────── */
+    function posterOf(m) { return m.stream_icon || m.cover || m.cover_big || m.icon || m.backdrop_path || ''; }
+    function titleOf(m)  { return m.name || m.title || 'Untitled'; }
+    function yearOf(m)   { return String(m.year || m.releaseDate || m.releasedate || '').slice(0, 4); }
+    function ratingOf(m) { return parseFloat(m.rating || m.rating_5based || 0) || 0; }
 
-    function initGrid(items) {
-        /* Detach observer before wiping DOM */
-        if (_imgObserver) {
-            elGrid.querySelectorAll('img[data-src]').forEach(function (img) {
-                _imgObserver.unobserve(img);
-            });
-        }
-        elGrid.innerHTML = '';
-        _renderData = items;
-        _renderPos  = 0;
-        elEmpty.hidden = items.length > 0;
-        if (!items.length) {
-            elEmpty.textContent = searchQuery ? 'No titles match "' + searchQuery + '"' : 'No titles found.';
-        }
-        elCount.textContent = items.length ? items.length.toLocaleString() + ' titles' : '';
-        if (items.length) renderBatch();
-    }
-
-    /* Scroll listener — attached after elGrid is defined */
-    elGrid.addEventListener('scroll', function () {
-        if (_renderPos >= _renderData.length) return;
-        if (elGrid.scrollTop + elGrid.clientHeight >= elGrid.scrollHeight - 500) renderBatch();
-    });
-
-    /* ── Sort state ─────────────────────────────────────────────────── */
-    function applySortFilter(items) {
-        var arr = items.slice();
-        if (sortMode === 'az') {
-            arr.sort(function (a, b) {
-                return (a.name || a.title || '').localeCompare(b.name || b.title || '');
-            });
-        } else if (sortMode === 'rating') {
-            arr.sort(function (a, b) {
-                return (parseFloat(b.rating || b.rating_5based || 0)) -
-                       (parseFloat(a.rating || a.rating_5based || 0));
-            });
-        } else if (sortMode === 'year') {
-            arr.sort(function (a, b) {
-                return (parseInt(b.year || b.releaseDate || 0, 10)) -
-                       (parseInt(a.year || a.releaseDate || 0, 10));
-            });
-        }
-        return arr;
-    }
-
-    /* ── Init ───────────────────────────────────────────────────────── */
-    cfg = getCfg();
-    if (!cfg) { showError('No IPTV config found. Go to Settings first.'); return; }
-
-    elBackBtn.addEventListener('click', function () { history.back(); });
-    document.getElementById('detail-close').addEventListener('click', closeDetail);
-    document.getElementById('detail-close-btn').addEventListener('click', closeDetail);
-    document.getElementById('detail-backdrop-scrim').addEventListener('click', closeDetail);
-    document.getElementById('detail-play-btn').addEventListener('click', playCurrentDetail);
-
-    /* Search in grid titles */
-    elSearch.addEventListener('input', function () {
-        searchQuery = elSearch.value.trim().toLowerCase();
-        initGrid(applySortFilter(filterItems()));
-        gridIndex = 0;
-    });
-
-    /* Filter chips */
-    elFilterBar.addEventListener('click', function (e) {
-        var chip = e.target.closest('.filter-chip');
-        if (!chip) return;
-        elFilterBar.querySelectorAll('.filter-chip').forEach(function (c) {
-            c.classList.remove('active');
-        });
-        chip.classList.add('active');
-        sortMode = chip.dataset.sort || 'default';
-        initGrid(applySortFilter(filterItems()));
-        if (zone === 'filter') applyFilterFocus(getFilterChips().indexOf(chip));
-    });
-
-    /* ── Show empty state until user selects a category ─────────────── */
-    setLoading(false);
-    elEmpty.hidden = false;
-    elEmpty.textContent = 'Select a category to browse';
-
-    /* ── Load categories only (parallel, cached) ─────────────────────
-       Categories are tiny payloads — load both at once, render as soon
-       as either resolves so the sidebar appears immediately.            */
-    var cacheKeyMovie  = 'vod_cats_movie_'  + cfg.server_url;
-    var cacheKeySeries = 'vod_cats_series_' + cfg.server_url;
-
-    var movieCatsPromise  = fetchCached(cacheKeyMovie,  apiUrl('action=get_vod_categories')).catch(function () { return []; });
-    var seriesCatsPromise = fetchCached(cacheKeySeries, apiUrl('action=get_series_categories')).catch(function () { return []; });
-
-    /* Render sidebar as soon as movie cats arrive (usually first) */
-    movieCatsPromise.then(function (cats) {
-        var all = Array.isArray(cats) ? cats : [];
-        groups[1].cats = _hiddenVodM.size ? all.filter(function (c) { return !_hiddenVodM.has(String(c.category_id)); }) : all;
-        renderSidebar();
-    });
-
-    /* Then update with series cats */
-    seriesCatsPromise.then(function (cats) {
-        var all = Array.isArray(cats) ? cats : [];
-        groups[2].cats = _hiddenVodS.size ? all.filter(function (c) { return !_hiddenVodS.has(String(c.category_id)); }) : all;
-        renderSidebar();
-    });
-
-    /* ── Sidebar ────────────────────────────────────────────────────── */
-    function renderSidebar() {
-        var prevScrollTop = elCatList.scrollTop;
-        elCatList.innerHTML = '';
-
-        groups.forEach(function (group) {
-            if (group.id === 'favs') {
-                var favs = loadFavs();
-                group.cats = favs;
-                if (!favs.length) return;
-            }
-
-            /* Group header */
-            var header = document.createElement('li');
-            header.className = 'cat-group-header';
-            header.dataset.groupId = group.id;
-            header.dataset.open    = group.open ? 'true' : 'false';
-
-            var arrow = document.createElement('span');
-            arrow.className = 'cat-group-arrow';
-            arrow.textContent = '▶';
-            header.appendChild(arrow);
-
-            var labelSpan = document.createElement('span');
-            labelSpan.textContent = group.label;
-            header.appendChild(labelSpan);
-
-            header.addEventListener('click', function () { toggleGroup(group.id); });
-            elCatList.appendChild(header);
-
-            if (group.id === 'favs') {
-                group.cats.forEach(function (fav) {
-                    elCatList.appendChild(makeCatItem(fav.type, fav.catId, fav.name, group.open, true));
-                });
-                return;
-            }
-
-            elCatList.appendChild(makeCatItem(group.id, 'all', 'All ' + group.label, group.open, false));
-            group.cats.forEach(function (cat) {
-                elCatList.appendChild(makeCatItem(group.id, cat.category_id,
-                    cat.category_name || 'Unnamed', group.open, false));
-            });
-        });
-
-        updateSidebarActive();
-        elCatList.scrollTop = prevScrollTop;
-        setTimeout(function () { applyCatFocus(catIndex); }, 30);
-    }
-
-    function makeCatItem(type, catId, name, visible, isFavItem) {
-        var li = document.createElement('li');
-        li.className = 'cat-item cat-child';
-        li.dataset.type  = type;
-        li.dataset.catId = catId;
-        li.style.display = visible ? '' : 'none';
-
-        var nameSpan = document.createElement('span');
-        nameSpan.className = 'cat-item-name';
-        nameSpan.textContent = name;
-        li.appendChild(nameSpan);
-
-        var star = document.createElement('button');
-        star.className = 'cat-fav-btn' + ((!isFavItem && isFav(type, catId)) ? ' active' : (isFavItem ? ' active' : ''));
-        star.title = isFavItem ? 'Remove favourite' : 'Add to favourites';
-        star.textContent = '★';
-        star.addEventListener('click', function (e) {
-            e.stopPropagation();
-            toggleFav(type, catId, name);
-        });
-        li.appendChild(star);
-
-        li.addEventListener('click', function () { selectItem(type, catId, name); });
-        return li;
-    }
-
-    function toggleGroup(groupId) {
-        var group = groups.filter(function (g) { return g.id === groupId; })[0];
-        if (!group) return;
-        group.open = !group.open;
-
-        var header = elCatList.querySelector('.cat-group-header[data-group-id="' + groupId + '"]');
-        if (header) header.dataset.open = group.open ? 'true' : 'false';
-
-        /* Show/hide children */
-        if (groupId === 'favs') {
-            renderSidebar();
-        } else {
-            elCatList.querySelectorAll('.cat-child[data-type="' + groupId + '"]').forEach(function (el) {
-                el.style.display = group.open ? '' : 'none';
-            });
-        }
-
-        var all = getFocusableItems();
-        var idx = header ? all.indexOf(header) : catIndex;
-        applyCatFocus(idx !== -1 ? idx : catIndex);
-    }
-
-    function selectItem(type, catId, name) {
-        activeType  = type;
-        activeCatId = catId;
-        updateSidebarActive();
-        loadContent(type, catId, name);
-    }
-
-    function updateSidebarActive() {
-        elCatList.querySelectorAll('.cat-item').forEach(function (el) {
-            el.classList.toggle('active',
-                el.dataset.type === activeType && el.dataset.catId === activeCatId);
-        });
-    }
-
-    function getFocusableItems() {
-        return Array.from(elCatList.children).filter(function (el) {
-            return el.style.display !== 'none';
-        });
-    }
-
-    /* ── Content loading ────────────────────────────────────────────── */
-    function loadContent(type, catId, catName) {
-        elCatName.textContent = catName;
-        setLoading(true);
-        allItems = [];
-        initGrid([]);
-
-        var action = type === 'series' ? 'get_series' : 'get_vod_streams';
-        var params = 'action=' + action;
-        if (catId !== 'all') params += '&category_id=' + encodeURIComponent(catId);
-
-        var ck = 'vod_content_' + cfg.server_url + '_' + type + '_' + catId;
-
-        fetchCached(ck, apiUrl(params))
-            .then(function (data) {
-                allItems = Array.isArray(data) ? data : [];
-                setLoading(false);
-                initGrid(applySortFilter(filterItems()));
-                gridIndex = 0;
-                if (zone === 'grid') applyGridFocus(0);
-            })
-            .catch(function (err) {
-                console.error('VOD load error:', err);
-                setLoading(false);
-                showError('Failed to load content. Check your connection and config.');
-            });
-    }
-
-    /* ── Filtering ──────────────────────────────────────────────────── */
-    function filterItems() {
-        if (!searchQuery) return allItems;
-        return allItems.filter(function (m) {
-            return (m.name || m.title || '').toLowerCase().indexOf(searchQuery) !== -1;
-        });
-    }
-
-    /* ── Card factory ───────────────────────────────────────────────── */
-    function makeCard(m) {
+    function makeCard(item, kind) {
         var card = document.createElement('div');
         card.className = 'vod-card';
-        card.setAttribute('role', 'listitem');
+        card.tabIndex = -1;
 
-        var icon = m.stream_icon || m.cover || m.backdrop_path || '';
+        var poster = document.createElement('div');
+        poster.className = 'vod-card-poster';
+        var icon = posterOf(item);
         if (icon) {
             var img = document.createElement('img');
-            img.className = 'vod-card-poster';
-            img.alt = m.name || m.title || '';
-            img.decoding = 'async';
-
-            if (_imgObserver) {
-                /* Lazy via IntersectionObserver */
-                img.dataset.src = icon;
-                img.src = '';
-                _imgObserver.observe(img);
-            } else {
-                img.loading = 'lazy';
-                img.src = icon;
-            }
-
-            img.onerror = function () {
-                var ph = makePlaceholder(m.name || m.title || '');
-                if (img.parentNode === card) card.replaceChild(ph, img);
-            };
-            card.appendChild(img);
+            img.alt = ''; img.decoding = 'async';
+            img.onerror = function () { poster.classList.add('no-img'); poster.setAttribute('data-letter', titleOf(item).charAt(0)); if (img.parentNode) img.parentNode.removeChild(img); };
+            lazyImg(img, icon);
+            poster.appendChild(img);
         } else {
-            card.appendChild(makePlaceholder(m.name || m.title || ''));
+            poster.classList.add('no-img');
+            poster.setAttribute('data-letter', titleOf(item).charAt(0));
         }
 
-        var info = document.createElement('div');
-        info.className = 'vod-card-info';
-
-        var titleEl = document.createElement('div');
-        titleEl.className = 'vod-card-title';
-        titleEl.textContent = m.name || m.title || 'Unknown';
-        info.appendChild(titleEl);
-
-        var meta = document.createElement('div');
-        meta.className = 'vod-card-meta';
-
-        var year = String(m.year || m.releaseDate || '').slice(0, 4);
-        if (year) {
-            var yearEl = document.createElement('span');
-            yearEl.className = 'vod-card-year';
-            yearEl.textContent = year;
-            meta.appendChild(yearEl);
+        // progress bar for continue-watching cards
+        if (kind === 'progress' && item.dur) {
+            var pb = document.createElement('div'); pb.className = 'vod-card-progress';
+            var pf = document.createElement('div'); pf.className = 'vod-card-progress-fill';
+            pf.style.width = Math.max(2, Math.min(100, (item.pos / item.dur) * 100)) + '%';
+            pb.appendChild(pf); poster.appendChild(pb);
         }
+        card.appendChild(poster);
 
-        var rating = parseFloat(m.rating || m.rating_5based || 0);
-        if (rating > 0) {
-            var rEl = document.createElement('span');
-            rEl.className = 'vod-card-rating';
-            rEl.textContent = rating.toFixed(1);
-            meta.appendChild(rEl);
-        }
+        var label = document.createElement('div');
+        label.className = 'vod-card-label';
+        label.textContent = titleOf(item);
+        card.appendChild(label);
 
-        if (activeType === 'series') {
-            var badge = document.createElement('span');
-            badge.className = 'vod-card-type-badge';
-            badge.textContent = 'Series';
-            meta.appendChild(badge);
-        }
-
-        info.appendChild(meta);
-        card.appendChild(info);
-        card.addEventListener('click', function () { openDetail(m); });
+        card.addEventListener('click', function () {
+            if (kind === 'progress') resumePlay(item);
+            else openDetail(item);
+        });
         return card;
     }
 
-    function makePlaceholder(text) {
-        var ph = document.createElement('div');
-        ph.className = 'vod-card-poster-placeholder';
-        var t = document.createElement('span');
-        t.className = 'vod-card-placeholder-title';
-        t.textContent = text;
-        ph.appendChild(t);
-        return ph;
+    /* ── Rails ───────────────────────────────────────────────────────── */
+    var railObserver = ('IntersectionObserver' in window)
+        ? new IntersectionObserver(function (entries) {
+            entries.forEach(function (en) {
+                if (en.isIntersecting) { fillRail(en.target); railObserver.unobserve(en.target); }
+            });
+        }, { rootMargin: '400px' })
+        : null;
+
+    function makeRail(titleText, type, catId) {
+        var rail = document.createElement('section');
+        rail.className = 'vod-rail';
+        rail.dataset.type = type || '';
+        rail.dataset.catId = catId == null ? '' : catId;
+        rail.dataset.loaded = '0';
+
+        var h = document.createElement('h2');
+        h.className = 'vod-rail-title';
+        h.textContent = titleText;
+        rail.appendChild(h);
+
+        var track = document.createElement('div');
+        track.className = 'vod-rail-track';
+        rail.appendChild(track);
+        return rail;
     }
 
-    /* ── Detail overlay ─────────────────────────────────────────────── */
-    var _detailItem = null;
+    function fillRail(rail) {
+        if (rail.dataset.loaded !== '0') return;
+        rail.dataset.loaded = '1';
+        var type = rail.dataset.type, catId = rail.dataset.catId;
+        var track = rail.querySelector('.vod-rail-track');
+        var action = type === 'series' ? 'get_series' : 'get_vod_streams';
+        var ck = 'vod_content_' + base() + '_' + type + '_' + catId;
+        var url = apiUrl('action=' + action + '&category_id=' + encodeURIComponent(catId));
 
-    function openDetail(item) {
-        _detailItem = item;
-        zone = 'detail';
-        detailIndex = 0;
+        // skeleton shimmer while loading
+        for (var s = 0; s < 6; s++) { var sk = document.createElement('div'); sk.className = 'vod-card vod-skeleton'; track.appendChild(sk); }
 
-        var title  = item.name || item.title || '';
-        var year   = String(item.year || item.releaseDate || '').slice(0, 4);
-        var rating = parseFloat(item.rating || item.rating_5based || 0);
-        var icon   = item.stream_icon || item.cover || item.backdrop_path || '';
-
-        document.getElementById('detail-title').textContent    = title;
-        document.getElementById('detail-year').textContent     = year;
-        document.getElementById('detail-duration').textContent = item.duration ? item.duration + ' min' : '';
-        document.getElementById('detail-genre').textContent    = item.genre || '';
-        document.getElementById('detail-rating').textContent   = rating > 0 ? rating.toFixed(1) : '';
-        document.getElementById('detail-plot').textContent     = item.plot || item.description || '';
-        document.getElementById('detail-cast').textContent     = item.cast || '';
-        document.getElementById('detail-director').textContent = item.director || '';
-
-        /* Poster */
-        var poster = document.getElementById('detail-poster');
-        poster.src = icon || '';
-        poster.style.display = icon ? 'block' : 'none';
-
-        /* Full-bleed cinematic backdrop */
-        var bd = document.getElementById('detail-backdrop-img');
-        bd.style.backgroundImage = icon ? 'url(' + icon + ')' : 'none';
-
-        /* Lazy-fetch extended info if plot is missing */
-        var infoId = item.stream_id || item.series_id;
-        if (infoId && !item.plot && !item.description) {
-            var action = activeType === 'series'
-                ? 'action=get_series_info&series_id='
-                : 'action=get_vod_info&vod_id=';
-            fetchJSON(apiUrl(action + infoId))
-                .then(function (data) {
-                    var info = data && (data.info || data.movie_data || data);
-                    if (!info) return;
-                    if (info.plot || info.description)
-                        document.getElementById('detail-plot').textContent = info.plot || info.description;
-                    if (info.cast)     document.getElementById('detail-cast').textContent      = info.cast;
-                    if (info.director) document.getElementById('detail-director').textContent  = info.director;
-                    if (info.genre)    document.getElementById('detail-genre').textContent     = info.genre;
-                    if (info.duration_secs)
-                        document.getElementById('detail-duration').textContent =
-                            Math.round(info.duration_secs / 60) + ' min';
-                    if ((info.movie_image || info.cover) && !icon) {
-                        var newIcon = info.movie_image || info.cover;
-                        poster.src = newIcon;
-                        poster.style.display = 'block';
-                        bd.style.backgroundImage = 'url(' + newIcon + ')';
-                    }
-                }).catch(function () {});
-        }
-
-        elDetailOverlay.hidden = false;
-        applyDetailFocus(0);
-    }
-
-    function closeDetail() {
-        elDetailOverlay.hidden = true;
-        _detailItem = null;
-        /* Blank backdrop to free memory */
-        document.getElementById('detail-backdrop-img').style.backgroundImage = 'none';
-        zone = 'grid';
-        applyGridFocus(gridIndex);
-    }
-
-    function playCurrentDetail() {
-        if (!_detailItem) return;
-        var title = _detailItem.name || _detailItem.title || '';
-        if (activeType === 'series') {
-            try { localStorage.setItem('iptv_series_id',  _detailItem.series_id); } catch (e) {}
-            try { localStorage.setItem('iptv_play_title', title); } catch (e) {}
-            window.location.href = '../pages/series.html?id=' + encodeURIComponent(_detailItem.series_id) +
-                                   '&title=' + encodeURIComponent(title);
-        } else {
-            var ext = _detailItem.container_extension || 'mp4';
-            var url = buildMovieUrl(_detailItem.stream_id, ext);
-            try { localStorage.setItem('iptv_play_url',   url); } catch (e) {}
-            try { localStorage.setItem('iptv_play_title', title); } catch (e) {}
-            window.location.href = '../pages/player.html?url=' + encodeURIComponent(url) +
-                                   '&title=' + encodeURIComponent(title);
-        }
-    }
-
-    /* ── Loading / error ────────────────────────────────────────────── */
-    function setLoading(on) {
-        elLoading.style.display = on ? 'flex' : 'none';
-        elGrid.style.display    = on ? 'none' : '';
-        if (on) elEmpty.hidden = true;
-    }
-
-    function showError(msg) {
-        setLoading(false);
-        elEmpty.textContent = msg;
-        elEmpty.hidden = false;
-    }
-
-    /* ── D-pad focus helpers ────────────────────────────────────────── */
-    function clearRings() {
-        document.querySelectorAll('.tv-focus-visible').forEach(function (el) {
-            el.classList.remove('tv-focus-visible');
+        fetchCached(ck, url).then(function (data) {
+            track.innerHTML = '';
+            var items = Array.isArray(data) ? data : [];
+            if (!items.length) { rail.parentNode && rail.parentNode.removeChild(rail); return; }
+            var n = Math.min(items.length, RAIL_CAP);
+            var frag = document.createDocumentFragment();
+            for (var i = 0; i < n; i++) frag.appendChild(makeCard(items[i], type));
+            track.appendChild(frag);
+            /* If the user is already sitting on this rail, paint focus now that
+               cards exist (lazy load may finish after they navigated here). */
+            if (zone === 'rails' && railEls()[railIndex] === rail) paintRailFocus();
+        }).catch(function () {
+            rail.parentNode && rail.parentNode.removeChild(rail);
         });
     }
 
-    function applyCatFocus(idx) {
-        clearRings();
-        var items = getFocusableItems();
-        if (!items.length) return;
-        catIndex = Math.max(0, Math.min(items.length - 1, idx));
-        items[catIndex].classList.add('tv-focus-visible');
-        items[catIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    }
+    function renderRails() {
+        elRails.innerHTML = '';
+        railIndex = 0; cardIndex = 0;
 
-    function getGridCards() {
-        return Array.from(elGrid.querySelectorAll('.vod-card'));
-    }
-
-    function applyGridFocus(idx) {
-        clearRings();
-        var cards = getGridCards();
-        if (!cards.length) return;
-        gridIndex = Math.max(0, Math.min(cards.length - 1, idx));
-        cards[gridIndex].classList.add('tv-focus-visible');
-        cards[gridIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        if (gridIndex >= _renderPos - 20) renderBatch();
-    }
-
-    function getGridCols() {
-        var cards = getGridCards();
-        if (cards.length < 2) return 1;
-        var firstTop = Math.round(cards[0].getBoundingClientRect().top);
-        var cols = 0;
-        for (var i = 0; i < cards.length; i++) {
-            if (Math.round(cards[i].getBoundingClientRect().top) !== firstTop) break;
-            cols++;
+        // Continue Watching first
+        var cw = continueWatching();
+        if (cw.length) {
+            var cwRail = makeRail('Continue Watching', '', '');
+            cwRail.dataset.loaded = '1';
+            var track = cwRail.querySelector('.vod-rail-track');
+            cw.forEach(function (e) { track.appendChild(makeCard(e, 'progress')); });
+            elRails.appendChild(cwRail);
         }
-        return cols || 1;
+
+        var list = (cats[activeType] || []).filter(function (c) {
+            return !hidden[activeType].has(String(c.category_id));
+        });
+        list.forEach(function (c, i) {
+            var rail = makeRail(c.category_name || 'Unnamed', activeType, c.category_id);
+            elRails.appendChild(rail);
+            if (i < 2) fillRail(rail);                 // eager-load the top rails
+            else if (railObserver) railObserver.observe(rail);
+            else fillRail(rail);                       // no IO (old WebOS) → load now
+        });
+
+        if (!list.length && !cw.length) showStatus('Nothing here yet.', false);
+        else hideStatus();
+        renderSidebarCats();    /* keep the sidebar category list in sync */
+        /* After a (re)render from boot or a section switch, drop focus into the
+           rails. Otherwise leave focus where it is (e.g. sidebar open). */
+        if (_focusRailsAfterRender) {
+            _focusRailsAfterRender = false;
+            focusZone('rails');
+            paintRailFocus();
+        }
     }
 
-    function getDetailBtns() {
-        return Array.from(document.querySelectorAll('#detail-actions .detail-btn'));
+    /* ── Category load + section switch ──────────────────────────────── */
+    function loadType(type) {
+        activeType = type;
+        document.querySelectorAll('.vod-nav-item').forEach(function (t) {
+            if (t.dataset.action === 'movie' || t.dataset.action === 'series')
+                t.classList.toggle('active', t.dataset.action === type);
+        });
+        if (cats[type]) { renderRails(); return; }
+        showStatus('Loading…', true);
+        var action = type === 'series' ? 'get_series_categories' : 'get_vod_categories';
+        var ck = (type === 'series' ? 'vod_cats_series_' : 'vod_cats_movie_') + base();
+        fetchCached(ck, apiUrl('action=' + action)).then(function (data) {
+            cats[type] = Array.isArray(data) ? data : [];
+            renderRails();
+        }).catch(function () {
+            cats[type] = [];
+            showStatus('Could not load categories.', false);
+        });
     }
 
-    function applyDetailFocus(idx) {
-        clearRings();
-        var btns = getDetailBtns();
-        if (!btns.length) return;
-        detailIndex = Math.max(0, Math.min(btns.length - 1, idx));
-        btns[detailIndex].classList.add('tv-focus-visible');
+    /* ── Detail overlay ──────────────────────────────────────────────── */
+    var detailItem = null, detailIsSeries = false, seasonsData = null, activeSeason = null;
+
+    function setText(id, txt) { var el = document.getElementById(id); if (el) el.textContent = txt || ''; }
+
+    function openDetail(item) {
+        detailItem = item;
+        detailIsSeries = item.__type ? (item.__type === 'series') : (activeType === 'series' || !!item.series_id);
+        prevZone = zone;
+
+        var icon = posterOf(item);
+        document.getElementById('vod-detail-poster').src = icon || '';
+        var bd = document.getElementById('vod-detail-backdrop');
+        bd.style.backgroundImage = icon ? 'url("' + icon + '")' : 'none';
+
+        setText('vod-detail-title', titleOf(item));
+        setText('vod-detail-plot', item.plot || item.description || '');
+        setText('vod-detail-cast', item.cast || '');
+        setText('vod-detail-director', item.director || '');
+        document.getElementById('vod-detail-cast-row').style.display = item.cast ? '' : 'none';
+        document.getElementById('vod-detail-director-row').style.display = item.director ? '' : 'none';
+
+        var meta = [];
+        if (yearOf(item))   meta.push('<span class="vod-meta-badge">' + escHtml(yearOf(item)) + '</span>');
+        if (ratingOf(item)) meta.push('<span class="vod-meta-badge gold">★ ' + ratingOf(item).toFixed(1) + '</span>');
+        if (item.genre)     meta.push('<span class="vod-meta-badge">' + escHtml(item.genre) + '</span>');
+        if (item.duration)  meta.push('<span class="vod-meta-badge">' + escHtml(item.duration) + '</span>');
+        document.getElementById('vod-detail-meta').innerHTML = meta.join('');
+
+        var seasonsBox = document.getElementById('vod-seasons');
+        var playBtn = document.getElementById('vod-play-btn');
+
+        elDetail.hidden = false;
+        detailFocus = 0;
+
+        if (detailIsSeries) {
+            playBtn.style.display = 'none';
+            seasonsBox.hidden = false;
+            loadSeries(item);
+        } else {
+            playBtn.style.display = '';
+            seasonsBox.hidden = true;
+            // resume label
+            var prog = loadProgress()['m:' + item.stream_id];
+            setText('vod-play-label', (prog && prog.pos > 30) ? 'Resume' : 'Play');
+            lazyFetchVodInfo(item);
+        }
+        focusZone('detail');
+        paintDetailFocus();
     }
 
-    /* Filter chip focus */
-    var filterZoneIndex = 0;
-    function getFilterChips() {
-        return Array.from(elFilterBar.querySelectorAll('.filter-chip'));
-    }
-    function applyFilterFocus(idx) {
-        clearRings();
-        var chips = getFilterChips();
-        if (!chips.length) return;
-        filterZoneIndex = Math.max(0, Math.min(chips.length - 1, idx));
-        chips[filterZoneIndex].classList.add('tv-focus-visible');
+    function closeDetail() {
+        elDetail.hidden = true;
+        document.getElementById('vod-detail-backdrop').style.backgroundImage = 'none';
+        detailItem = null; seasonsData = null;
+        focusZone(prevZone === 'search' ? 'search' : 'rails');
+        if (zone === 'rails') paintRailFocus(); else paintSearchFocus();
     }
 
-    /* ── Keyboard (WebOS D-pad) ─────────────────────────────────────── */
-    var _kbInput = null;
-    elSearch.addEventListener('focus', function () { _kbInput = elSearch; });
-    elSearch.addEventListener('blur',  function () { _kbInput = null; });
+    /* Lazy-fetch richer movie info (plot/cast) if missing */
+    function lazyFetchVodInfo(item) {
+        if ((item.plot || item.description) && item.cast) return;
+        if (!item.stream_id) return;
+        fetchJSON(apiUrl('action=get_vod_info&vod_id=' + encodeURIComponent(item.stream_id)))
+            .then(function (data) {
+                var info = data && (data.info || data.movie_data || data);
+                if (!info || detailItem !== item) return;
+                if (info.plot || info.description) setText('vod-detail-plot', info.plot || info.description);
+                if (info.cast)     { setText('vod-detail-cast', info.cast); document.getElementById('vod-detail-cast-row').style.display = ''; }
+                if (info.director) { setText('vod-detail-director', info.director); document.getElementById('vod-detail-director-row').style.display = ''; }
+                item.container_extension = item.container_extension || info.container_extension;
+            }).catch(function () {});
+    }
 
+    /* ── Series: seasons + episodes ──────────────────────────────────── */
+    function loadSeries(item) {
+        var tabs = document.getElementById('vod-season-tabs');
+        var list = document.getElementById('vod-episode-list');
+        tabs.innerHTML = ''; list.innerHTML = '<div class="vod-ep-loading">Loading episodes…</div>';
+        seasonsData = null;
+        fetchJSON(apiUrl('action=get_series_info&series_id=' + encodeURIComponent(item.series_id)))
+            .then(function (data) {
+                if (detailItem !== item) return;
+                var eps = data && data.episodes;
+                if (!eps) { list.innerHTML = '<div class="vod-ep-loading">No episodes found.</div>'; return; }
+                seasonsData = eps;
+                var seasons = Object.keys(eps).sort(function (a, b) { return (+a) - (+b); });
+                tabs.innerHTML = '';
+                seasons.forEach(function (sn, i) {
+                    var t = document.createElement('button');
+                    t.className = 'vod-season-tab' + (i === 0 ? ' active' : '');
+                    t.textContent = 'S' + sn;
+                    t.dataset.season = sn;
+                    t.addEventListener('click', function () { selectSeason(sn); });
+                    tabs.appendChild(t);
+                });
+                if (seasons.length) selectSeason(seasons[0]);
+            }).catch(function () {
+                list.innerHTML = '<div class="vod-ep-loading">Could not load episodes.</div>';
+            });
+    }
+
+    function selectSeason(sn) {
+        activeSeason = sn;
+        document.querySelectorAll('#vod-season-tabs .vod-season-tab').forEach(function (t) {
+            t.classList.toggle('active', t.dataset.season === String(sn));
+        });
+        var list = document.getElementById('vod-episode-list');
+        list.innerHTML = '';
+        var eps = (seasonsData && seasonsData[sn]) || [];
+        eps.forEach(function (ep) {
+            var ext = ep.container_extension || (ep.info && ep.info.container_extension) || 'mp4';
+            var num = ep.episode_num != null ? ep.episode_num : '';
+            var row = document.createElement('button');
+            row.className = 'vod-ep-row';
+            row.innerHTML =
+                '<span class="vod-ep-num">' + escHtml(num) + '</span>' +
+                '<span class="vod-ep-name">' + escHtml(ep.title || ('Episode ' + num)) + '</span>' +
+                '<span class="vod-ep-play">▶</span>';
+            row.addEventListener('click', function () {
+                playItem({
+                    type: 'episode', id: ep.id, ext: ext,
+                    name: (detailItem ? titleOf(detailItem) + ' · ' : '') + (ep.title || ('Episode ' + num)),
+                    icon: posterOf(detailItem || {}),
+                    series_id: detailItem && detailItem.series_id, season: sn, episode: num
+                });
+            });
+            list.appendChild(row);
+        });
+        paintDetailFocus();
+    }
+
+    /* ── Playback navigation ─────────────────────────────────────────── */
+    function playItem(meta) {
+        var url = meta.type === 'episode' ? buildEpisodeUrl(meta.id, meta.ext) : buildMovieUrl(meta.id, meta.ext);
+        var key = (meta.type === 'episode' ? 'e:' : 'm:') + meta.id;
+        try {
+            localStorage.setItem('iptv_play_url', url);
+            localStorage.setItem('iptv_play_title', meta.name || '');
+            localStorage.setItem('iptv_play_meta', JSON.stringify({
+                url: url, key: key, type: meta.type, id: meta.id, ext: meta.ext,
+                name: meta.name || '', icon: meta.icon || '',
+                series_id: meta.series_id || '', season: meta.season || '', episode: meta.episode || '',
+                resume: meta.resume || 0
+            }));
+        } catch (e) {}
+        window.location.href = '../pages/player.html?url=' + encodeURIComponent(url) +
+                               '&title=' + encodeURIComponent(meta.name || '');
+    }
+
+    function playCurrentMovie() {
+        if (!detailItem) return;
+        var ext = detailItem.container_extension || 'mp4';
+        var prog = loadProgress()['m:' + detailItem.stream_id];
+        playItem({
+            type: 'movie', id: detailItem.stream_id, ext: ext,
+            name: titleOf(detailItem), icon: posterOf(detailItem),
+            resume: (prog && prog.pos > 30) ? prog.pos : 0
+        });
+    }
+
+    function resumePlay(entry) {
+        playItem({
+            type: entry.type === 'episode' ? 'episode' : 'movie',
+            id: entry.id, ext: entry.ext,
+            name: entry.name, icon: entry.icon,
+            series_id: entry.series_id, season: entry.season, episode: entry.episode,
+            resume: entry.pos || 0
+        });
+    }
+
+    document.getElementById('vod-play-btn').addEventListener('click', playCurrentMovie);
+
+    /* ── Global search ───────────────────────────────────────────────── */
+    var searchAll = null;          // { movie:[], series:[] } once loaded
+    var searchTimer = null;
+
+    function openSearch() {
+        prevZone = zone;
+        elSearch.hidden = false;
+        elSearchGrid.innerHTML = '';
+        document.getElementById('vod-search-hint').style.display = '';
+        focusZone('search');
+        elSearchIn.value = '';
+        setTimeout(function () { elSearchIn.focus(); }, 30);
+        ensureSearchData();
+    }
+    function closeSearch() {
+        elSearch.hidden = true;
+        elSearchIn.blur();
+        focusZone('rails');
+        paintRailFocus();
+    }
+    function ensureSearchData() {
+        if (searchAll) return;
+        searchAll = { movie: [], series: [] };
+        fetchCached('vod_all_movie_' + base(), apiUrl('action=get_vod_streams')).then(function (d) { searchAll.movie = Array.isArray(d) ? d : []; runSearch(); }).catch(function () {});
+        fetchCached('vod_all_series_' + base(), apiUrl('action=get_series')).then(function (d) { searchAll.series = Array.isArray(d) ? d : []; runSearch(); }).catch(function () {});
+    }
+    function runSearch() {
+        var q = elSearchIn.value.trim().toLowerCase();
+        var hint = document.getElementById('vod-search-hint');
+        if (!q) { elSearchGrid.innerHTML = ''; hint.style.display = ''; return; }
+        hint.style.display = 'none';
+        if (!searchAll) { ensureSearchData(); return; }
+        var res = [];
+        ['movie', 'series'].forEach(function (t) {
+            (searchAll[t] || []).forEach(function (m) {
+                if (titleOf(m).toLowerCase().indexOf(q) !== -1) { m.__type = t; res.push(m); }
+            });
+        });
+        res = res.slice(0, 120);
+        elSearchGrid.innerHTML = '';
+        if (!res.length) { hint.style.display = ''; hint.textContent = 'No results for "' + q + '".'; return; }
+        var frag = document.createDocumentFragment();
+        res.forEach(function (m) { frag.appendChild(makeCard(m, m.__type)); });
+        elSearchGrid.appendChild(frag);
+        searchFocus = 0;   /* ring is painted when the user presses DOWN out of the box */
+    }
+    elSearchIn.addEventListener('input', function () {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(runSearch, 250);
+    });
+
+    /* ── Status helpers ──────────────────────────────────────────────── */
+    function showStatus(text, spinner) {
+        elStatus.style.display = 'flex';
+        elStatusTx.textContent = text;
+        elStatus.querySelector('.vod-spinner').style.display = spinner ? '' : 'none';
+        elRails.style.display = 'none';
+    }
+    function hideStatus() { elStatus.style.display = 'none'; elRails.style.display = ''; }
+
+    /* ── D-pad navigation ────────────────────────────────────────────── */
     var KEY = { UP: 38, DOWN: 40, LEFT: 37, RIGHT: 39, ENTER: 13, BACK: 461 };
+    var zone = 'rails', prevZone = 'rails';
+    var sidebarIndex = 1;                // 0 search, 1 movies, 2 series, 3 settings
+    var railIndex = 0, cardIndex = 0;
+    var detailFocus = 0;
+    var searchFocus = 0;
+    var _focusRailsAfterRender = false;
+
+    function focusZone(z) { zone = z; clearRings(); }
+    function clearRings() {
+        document.querySelectorAll('.tv-focus-visible').forEach(function (el) { el.classList.remove('tv-focus-visible'); });
+    }
+
+    /* ── Sidebar (collapsible left nav + categories) ─────────────────── */
+    function sidebarEl() { return document.getElementById('vod-sidebar'); }
+    function navItems()  { return Array.prototype.slice.call(document.querySelectorAll('#vod-sidebar .vod-nav-item')); }
+    /* Focusable sidebar items = top sections + (when expanded) categories. */
+    function sidebarItems() {
+        return Array.prototype.slice.call(document.querySelectorAll('#vod-sidebar .vod-nav-item, #vod-sidebar .vod-cat-item'))
+            .filter(function (el) { return el.offsetParent !== null; });
+    }
+
+    /* Build the category list for the active section. */
+    function renderSidebarCats() {
+        var wrap = document.getElementById('vod-nav-cats');
+        wrap.innerHTML = '';
+        var list = (cats[activeType] || []).filter(function (c) {
+            return !hidden[activeType].has(String(c.category_id));
+        });
+        if (!list.length) return;
+        var head = document.createElement('div');
+        head.className = 'vod-cat-header';
+        head.textContent = 'Categories';
+        wrap.appendChild(head);
+        list.forEach(function (c) {
+            var b = document.createElement('button');
+            b.className = 'vod-cat-item';
+            b.dataset.catId = c.category_id;
+            b.textContent = c.category_name || 'Unnamed';
+            b.addEventListener('click', function () { jumpToCategory(c.category_id); });
+            wrap.appendChild(b);
+        });
+    }
+
+    /* Jump the rails to a given category and focus it. */
+    function jumpToCategory(catId) {
+        collapseSidebar();
+        focusZone('rails');
+        var rails = railEls(), target = null, idx = 0;
+        for (var i = 0; i < rails.length; i++) {
+            if (rails[i].dataset.catId === String(catId)) { target = rails[i]; idx = i; break; }
+        }
+        if (target) {
+            railIndex = idx; cardIndex = 0;
+            ensureRailLoaded(target);
+        }
+        paintRailFocus();
+        if (target) { try { target.scrollIntoView({ block: 'start' }); } catch (e) {} }
+    }
+
+    function openSidebar() {
+        focusZone('sidebar');
+        sidebarEl().classList.add('expanded');
+        sidebarIndex = (activeType === 'series') ? 2 : 1;   // land on current section
+        paintSidebarFocus();
+    }
+    function collapseSidebar() { sidebarEl().classList.remove('expanded'); }
+    function paintSidebarFocus() {
+        clearRings();
+        var items = sidebarItems();
+        if (!items.length) return;
+        sidebarIndex = Math.max(0, Math.min(items.length - 1, sidebarIndex));
+        var el = items[sidebarIndex];
+        el.classList.add('tv-focus-visible');
+        el.scrollIntoView({ block: 'nearest' });
+    }
+    function activateNav(item) {
+        if (!item) return;
+        var action = item.dataset.action;
+        if (action === 'search') { collapseSidebar(); openSearch(); }
+        else if (action === 'settings') { window.location.href = '../pages/settings.html'; }
+        else {
+            collapseSidebar();
+            if (action !== activeType) { _focusRailsAfterRender = true; focusZone('rails'); loadType(action); }
+            else { focusZone('rails'); paintRailFocus(); }
+        }
+    }
+
+    function railEls() { return Array.prototype.slice.call(elRails.querySelectorAll('.vod-rail')); }
+    function railCards(rail) { return rail ? Array.prototype.slice.call(rail.querySelectorAll('.vod-card:not(.vod-skeleton)')) : []; }
+    function paintRailFocus() {
+        clearRings();
+        var rails = railEls();
+        if (!rails.length) { openSidebar(); return; }
+        railIndex = Math.max(0, Math.min(rails.length - 1, railIndex));
+        var cards = railCards(rails[railIndex]);
+        if (!cards.length) return;
+        cardIndex = Math.max(0, Math.min(cards.length - 1, cardIndex));
+        var card = cards[cardIndex];
+        card.classList.add('tv-focus-visible');
+        card.scrollIntoView({ block: 'nearest', inline: 'center' });
+        rails[railIndex].scrollIntoView({ block: 'nearest' });
+    }
+
+    function detailItems() {
+        var arr = [];
+        var playBtn = document.getElementById('vod-play-btn');
+        if (playBtn.style.display !== 'none') arr.push(playBtn);
+        arr = arr.concat(Array.prototype.slice.call(document.querySelectorAll('#vod-season-tabs .vod-season-tab')));
+        arr = arr.concat(Array.prototype.slice.call(document.querySelectorAll('#vod-episode-list .vod-ep-row')));
+        return arr;
+    }
+    function paintDetailFocus() {
+        clearRings();
+        var items = detailItems();
+        if (!items.length) return;
+        detailFocus = Math.max(0, Math.min(items.length - 1, detailFocus));
+        items[detailFocus].classList.add('tv-focus-visible');
+        items[detailFocus].scrollIntoView({ block: 'nearest' });
+    }
+
+    function searchCards() { return Array.prototype.slice.call(elSearchGrid.querySelectorAll('.vod-card')); }
+    function searchCols() {
+        var cards = searchCards();
+        if (cards.length < 2) return 1;
+        var top = Math.round(cards[0].getBoundingClientRect().top), n = 0;
+        for (var i = 0; i < cards.length; i++) { if (Math.round(cards[i].getBoundingClientRect().top) !== top) break; n++; }
+        return n || 1;
+    }
+    function paintSearchFocus() {
+        clearRings();
+        var cards = searchCards();
+        if (!cards.length) { elSearchIn.classList.add('tv-focus-visible'); return; }
+        searchFocus = Math.max(0, Math.min(cards.length - 1, searchFocus));
+        cards[searchFocus].classList.add('tv-focus-visible');
+        cards[searchFocus].scrollIntoView({ block: 'nearest' });
+    }
 
     window.addEventListener('keydown', function (e) {
         var kc = e.keyCode || e.which;
 
-        if (_kbInput) {
-            if (kc === KEY.BACK) { e.preventDefault(); _kbInput.blur(); }
+        /* When typing in the search box */
+        if (document.activeElement === elSearchIn) {
+            if (kc === KEY.DOWN) { e.preventDefault(); elSearchIn.blur(); paintSearchFocus(); }
+            else if (kc === KEY.BACK) { e.preventDefault(); elSearchIn.blur(); closeSearch(); }
             return;
         }
 
-        /* ── Detail zone ── */
-        if (zone === 'detail') {
-            if (kc === KEY.BACK)  { e.preventDefault(); closeDetail(); return; }
-            if (kc === KEY.LEFT)  { e.preventDefault(); applyDetailFocus(detailIndex - 1); return; }
-            if (kc === KEY.RIGHT) { e.preventDefault(); applyDetailFocus(detailIndex + 1); return; }
-            if (kc === KEY.ENTER) {
-                e.preventDefault();
-                var b = getDetailBtns()[detailIndex]; if (b) b.click();
-                return;
-            }
-            return;
-        }
+        e.preventDefault();
 
-        /* ── Sidebar zone ── */
-        if (zone === 'sidebar') {
-            if (kc === KEY.BACK) { e.preventDefault(); history.back(); return; }
-            if (kc === KEY.UP) {
-                e.preventDefault();
-                if (catIndex === 0) {
-                    clearRings();
-                    elSearch.classList.add('tv-focus-visible');
-                    elSearch.focus();
-                    return;
+        /* Detail overlay */
+        if (!elDetail.hidden) {
+            if (kc === KEY.BACK) { closeDetail(); return; }
+            var di = detailItems();
+            if (kc === KEY.DOWN) { detailFocus = Math.min(di.length - 1, detailFocus + 1); paintDetailFocus(); }
+            else if (kc === KEY.UP) { if (detailFocus === 0) { closeDetail(); } else { detailFocus--; paintDetailFocus(); } }
+            else if (kc === KEY.LEFT || kc === KEY.RIGHT) {
+                // move between season tabs if focused on one
+                var cur = di[detailFocus];
+                if (cur && cur.classList.contains('vod-season-tab')) {
+                    var tabs = Array.prototype.slice.call(document.querySelectorAll('#vod-season-tabs .vod-season-tab'));
+                    var ti = tabs.indexOf(cur) + (kc === KEY.RIGHT ? 1 : -1);
+                    if (ti >= 0 && ti < tabs.length) { detailFocus = di.indexOf(tabs[ti]); paintDetailFocus(); }
                 }
-                applyCatFocus(catIndex - 1);
-                return;
-            }
-            if (kc === KEY.DOWN)  { e.preventDefault(); applyCatFocus(catIndex + 1); return; }
-            if (kc === KEY.RIGHT) {
-                e.preventDefault();
-                zone = 'filter';
-                applyFilterFocus(filterZoneIndex);
-                return;
-            }
-            if (kc === KEY.ENTER) {
-                e.preventDefault();
-                var items = getFocusableItems();
-                if (items[catIndex]) items[catIndex].click();
-                return;
+            } else if (kc === KEY.ENTER) { if (di[detailFocus]) di[detailFocus].click(); }
+            return;
+        }
+
+        /* Search overlay */
+        if (!elSearch.hidden) {
+            if (kc === KEY.BACK) { closeSearch(); return; }
+            var cards = searchCards(), cols = searchCols();
+            if (kc === KEY.UP) {
+                if (searchFocus < cols) { elSearchIn.classList.remove('tv-focus-visible'); elSearchIn.focus(); }
+                else { searchFocus -= cols; paintSearchFocus(); }
+            } else if (kc === KEY.DOWN) { searchFocus = Math.min(cards.length - 1, searchFocus + cols); paintSearchFocus(); }
+            else if (kc === KEY.LEFT)  { if (searchFocus % cols !== 0) { searchFocus--; paintSearchFocus(); } }
+            else if (kc === KEY.RIGHT) { searchFocus = Math.min(cards.length - 1, searchFocus + 1); paintSearchFocus(); }
+            else if (kc === KEY.ENTER) { if (cards[searchFocus]) cards[searchFocus].click(); }
+            return;
+        }
+
+        /* Sidebar */
+        if (zone === 'sidebar') {
+            if (kc === KEY.BACK)  { collapseSidebar(); history.back(); return; }
+            var si = sidebarItems();
+            if (kc === KEY.UP)        { sidebarIndex = Math.max(0, sidebarIndex - 1); paintSidebarFocus(); }
+            else if (kc === KEY.DOWN) { sidebarIndex = Math.min(si.length - 1, sidebarIndex + 1); paintSidebarFocus(); }
+            else if (kc === KEY.RIGHT){ collapseSidebar(); focusZone('rails'); paintRailFocus(); }
+            else if (kc === KEY.ENTER){
+                var it = si[sidebarIndex];
+                if (it && it.className.indexOf('vod-cat-item') !== -1) jumpToCategory(it.dataset.catId);
+                else activateNav(it);
             }
             return;
         }
 
-        /* ── Filter bar zone ── */
-        if (zone === 'filter') {
-            if (kc === KEY.BACK) {
-                e.preventDefault();
-                zone = 'sidebar';
-                applyCatFocus(catIndex);
-                return;
-            }
-            if (kc === KEY.LEFT) {
-                e.preventDefault();
-                if (filterZoneIndex === 0) { zone = 'sidebar'; applyCatFocus(catIndex); return; }
-                applyFilterFocus(filterZoneIndex - 1);
-                return;
-            }
-            if (kc === KEY.RIGHT) { e.preventDefault(); applyFilterFocus(filterZoneIndex + 1); return; }
-            if (kc === KEY.DOWN) {
-                e.preventDefault();
-                zone = 'grid';
-                applyGridFocus(0);
-                return;
-            }
+        /* Rails */
+        if (zone === 'rails') {
+            if (kc === KEY.BACK) { openSidebar(); return; }
+            var rails = railEls();
             if (kc === KEY.UP) {
-                e.preventDefault();
-                zone = 'sidebar';
-                applyCatFocus(catIndex);
-                return;
-            }
-            if (kc === KEY.ENTER) {
-                e.preventDefault();
-                var chips = getFilterChips();
-                if (chips[filterZoneIndex]) chips[filterZoneIndex].click();
-                return;
-            }
-            return;
-        }
-
-        /* ── Grid zone ── */
-        if (zone === 'grid') {
-            if (kc === KEY.BACK) { e.preventDefault(); zone = 'sidebar'; applyCatFocus(catIndex); return; }
-            var cols = getGridCols();
-            if (kc === KEY.UP) {
-                e.preventDefault();
-                if (gridIndex < cols) { zone = 'filter'; applyFilterFocus(filterZoneIndex); return; }
-                applyGridFocus(gridIndex - cols);
-                return;
-            }
-            if (kc === KEY.DOWN)  { e.preventDefault(); applyGridFocus(gridIndex + cols); return; }
-            if (kc === KEY.LEFT) {
-                e.preventDefault();
-                if (gridIndex % cols === 0) { zone = 'sidebar'; applyCatFocus(catIndex); return; }
-                applyGridFocus(gridIndex - 1);
-                return;
-            }
-            if (kc === KEY.RIGHT) { e.preventDefault(); applyGridFocus(gridIndex + 1); return; }
-            if (kc === KEY.ENTER) {
-                e.preventDefault();
-                var cards = getGridCards();
-                if (cards[gridIndex]) cards[gridIndex].click();
-                return;
+                if (railIndex > 0) { railIndex--; ensureRailLoaded(rails[railIndex]); paintRailFocus(); }
+            } else if (kc === KEY.DOWN) {
+                if (railIndex < rails.length - 1) { railIndex++; ensureRailLoaded(rails[railIndex]); paintRailFocus(); }
+            } else if (kc === KEY.LEFT) {
+                if (cardIndex > 0) { cardIndex--; paintRailFocus(); }
+                else { openSidebar(); }                 // LEFT at the first card opens the sidebar
+            } else if (kc === KEY.RIGHT) { cardIndex++; paintRailFocus(); }
+            else if (kc === KEY.ENTER) {
+                var cards2 = railCards(rails[railIndex]);
+                if (cards2[cardIndex]) cards2[cardIndex].click();
             }
             return;
         }
     });
 
+    function ensureRailLoaded(rail) {
+        if (rail && rail.dataset.loaded === '0') fillRail(rail);
+    }
+
+    /* ── Wire sidebar + overlays ─────────────────────────────────────── */
+    navItems().forEach(function (it) {
+        it.addEventListener('click', function () {
+            // a click also implies focus on that item
+            sidebarIndex = navItems().indexOf(it);
+            activateNav(it);
+        });
+    });
+    document.getElementById('vod-detail-close').addEventListener('click', closeDetail);
+    document.getElementById('vod-search-close').addEventListener('click', closeSearch);
+
+    /* ── Boot ────────────────────────────────────────────────────────── */
+    if (!cfg || !cfg.server_url) { showStatus('No server configured — open Settings first.', false); return; }
+    cardIndex = 0; railIndex = 0;
+    zone = 'rails';
+    _focusRailsAfterRender = true;   // land in the rails once content first renders
+    loadType('movie');
 }());

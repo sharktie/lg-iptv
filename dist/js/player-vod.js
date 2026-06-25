@@ -38,6 +38,18 @@
   }
   var url = param('url') || lsGet('iptv_play_url');
   var title = param('title') || lsGet('iptv_play_title');
+
+  /* Resume / progress metadata written by vod.js. Ignore it unless it matches
+     this exact URL, so a stale entry from a previous play can't apply here. */
+  var meta = null;
+  try {
+    meta = JSON.parse(lsGet('iptv_play_meta') || 'null');
+  } catch (e) {
+    meta = null;
+  }
+  if (meta && meta.url !== url) meta = null;
+  var resumeAt = meta && meta.resume > 0 ? meta.resume : 0;
+  var _resumed = false;
   var titleEl = document.getElementById('player-title');
   if (titleEl) titleEl.textContent = title || '';
 
@@ -51,6 +63,62 @@
       msg.style.display = 'flex';
     }
   }
+
+  /* ── Resume position + save progress (Continue Watching) ─────────────── */
+  function seekToResume() {
+    if (_resumed || resumeAt <= 0) return;
+    if (!isFinite(video.duration) || video.duration <= 0) return;
+    if (resumeAt < video.duration - 5) {
+      try {
+        video.currentTime = resumeAt;
+      } catch (e) {}
+    }
+    _resumed = true;
+  }
+  video.addEventListener('loadedmetadata', seekToResume);
+  video.addEventListener('canplay', seekToResume);
+  var _lastSave = 0;
+  function saveProgress(finished) {
+    if (!meta || !meta.key) return;
+    var dur = video.duration,
+      pos = video.currentTime;
+    if (!isFinite(dur) || dur <= 0) return;
+    try {
+      var all = JSON.parse(localStorage.getItem('vod_progress') || '{}');
+      if (finished || pos / dur > 0.95) {
+        delete all[meta.key]; // drop finished titles
+      } else if (pos > 30) {
+        all[meta.key] = {
+          key: meta.key,
+          type: meta.type,
+          id: meta.id,
+          ext: meta.ext,
+          name: meta.name,
+          icon: meta.icon,
+          series_id: meta.series_id,
+          season: meta.season,
+          episode: meta.episode,
+          pos: pos,
+          dur: dur,
+          ts: Date.now()
+        };
+      }
+      localStorage.setItem('vod_progress', JSON.stringify(all));
+    } catch (e) {}
+  }
+  video.addEventListener('timeupdate', function () {
+    var now = Date.now();
+    if (now - _lastSave > 5000) {
+      _lastSave = now;
+      saveProgress(false);
+    }
+  });
+  video.addEventListener('ended', function () {
+    saveProgress(true);
+  });
+  window.addEventListener('pagehide', function () {
+    saveProgress(false);
+  });
 
   /* ── OSD show / auto-hide ────────────────────────────────────────────── */
   var osdTimer = null;

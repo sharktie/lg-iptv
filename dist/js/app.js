@@ -913,20 +913,20 @@ function showOSD() {
   if (listings && listings.length) {
     var now = Date.now();
     var idx = listings.findIndex(function (e) {
-      var s = parseEpgTime(e.start),
-        n = parseEpgTime(e.end);
+      var s = epgStart(e),
+        n = epgEnd(e);
       return now >= s && now < n;
     });
     var cur = listings[idx >= 0 ? idx : 0];
     var next = listings[idx >= 0 ? idx + 1 : 1];
     if (cur) {
       nowTitle = xtreamDecodeEPG(cur.title);
-      nowTime = formatTimeRange(cur.start, cur.end);
-      progress = calcProgress(cur.start, cur.end);
+      nowTime = formatTimeRange(cur);
+      progress = calcProgress(cur);
     }
     if (next) {
       nextTitle = xtreamDecodeEPG(next.title);
-      nextTime = formatTimeRange(next.start, next.end);
+      nextTime = formatTimeRange(next);
     }
   }
   document.getElementById("fs-osd-now-title").textContent = nowTitle || "—";
@@ -1431,8 +1431,8 @@ function buildEpgStrip(strip, sid) {
   var now = Date.now();
   var frag = document.createDocumentFragment();
   listings.forEach(function (e) {
-    var eStart = parseEpgTime(e.start),
-      eEnd = parseEpgTime(e.end);
+    var eStart = epgStart(e),
+      eEnd = epgEnd(e);
     if (eEnd <= tlStart || eStart >= tlEnd) return;
     var cs = Math.max(eStart, tlStart),
       ce = Math.min(eEnd, tlEnd);
@@ -1544,15 +1544,15 @@ function _selectChannel() {
         case 9:
           now = Date.now();
           idx = listings.findIndex(function (e) {
-            var s = parseEpgTime(e.start),
-              n = parseEpgTime(e.end);
+            var s = epgStart(e),
+              n = epgEnd(e);
             return now >= s && now < n;
           });
           cur = listings[idx >= 0 ? idx : 0];
           next = listings[idx >= 0 ? idx + 1 : 1];
-          setEPG("now", xtreamDecodeEPG(cur.title), formatTimeRange(cur.start, cur.end), xtreamDecodeEPG(cur.description));
-          document.getElementById("epg-bar-fill").style.width = calcProgress(cur.start, cur.end) + "%";
-          if (next) setEPG("next", xtreamDecodeEPG(next.title), formatTimeRange(next.start, next.end), "");
+          setEPG("now", xtreamDecodeEPG(cur.title), formatTimeRange(cur), xtreamDecodeEPG(cur.description));
+          document.getElementById("epg-bar-fill").style.width = calcProgress(cur) + "%";
+          if (next) setEPG("next", xtreamDecodeEPG(next.title), formatTimeRange(next), "");
           showOSD();
         case 10:
           return _context6.a(2);
@@ -1595,7 +1595,20 @@ var _epgTimeCache = Object.create(null);
 function parseEpgTime(s) {
   if (!s) return 0;
   if (_epgTimeCache[s] !== undefined) return _epgTimeCache[s];
+  // The `start`/`end` strings are in the provider's timezone (unknown), so we
+  // can't parse them reliably — used only as a fallback. Treated as UTC.
   return _epgTimeCache[s] = new Date(s.replace(" ", "T") + "Z").getTime();
+}
+// Prefer the Unix-epoch timestamps: they're absolute UTC and unambiguous, which
+// avoids the constant timezone offset the localized strings caused.
+function epgStart(e) {
+  if (e && e.start_timestamp) return Number(e.start_timestamp) * 1000;
+  return parseEpgTime(e && e.start);
+}
+function epgEnd(e) {
+  var ts = e && (e.stop_timestamp || e.end_timestamp);
+  if (ts) return Number(ts) * 1000;
+  return parseEpgTime(e && e.end);
 }
 function fmtTime(ms) {
   return new Date(ms).toLocaleTimeString([], {
@@ -1603,18 +1616,18 @@ function fmtTime(ms) {
     minute: "2-digit"
   });
 }
-function formatTimeRange(start, end) {
-  var a = fmtTime(parseEpgTime(start)),
-    b = fmtTime(parseEpgTime(end));
+function formatTimeRange(e) {
+  var a = fmtTime(epgStart(e)),
+    b = fmtTime(epgEnd(e));
   return a && b ? "".concat(a, " \u2013 ").concat(b) : a || "";
 }
-function calcProgress(start, end) {
+function calcProgress(e) {
   try {
-    var s = parseEpgTime(start),
-      e = parseEpgTime(end),
+    var s = epgStart(e),
+      en = epgEnd(e),
       now = Date.now();
-    if (now < s || now > e) return 0;
-    return Math.round((now - s) / (e - s) * 100);
+    if (now < s || now > en) return 0;
+    return Math.round((now - s) / (en - s) * 100);
   } catch (_unused0) {
     return 0;
   }
