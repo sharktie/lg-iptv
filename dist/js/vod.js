@@ -413,13 +413,33 @@
     if (zone === 'rails') paintRailFocus();else paintSearchFocus();
   }
 
-  /* Lazy-fetch richer movie info (plot/cast) if missing */
+  /* Normalise whatever shape the panel uses for subtitle files. */
+  function extractSubs(info) {
+    var raw = info && (info.subtitles || info.subtitle);
+    if (!Array.isArray(raw)) return [];
+    return raw.map(function (s) {
+      if (typeof s === 'string') return {
+        url: s
+      };
+      return {
+        url: s.url || s.file || s.src || '',
+        lang: s.lang || s.language || s.name || ''
+      };
+    }).filter(function (s) {
+      return s.url;
+    });
+  }
+
+  /* Lazy-fetch richer movie info (plot/cast) + subtitle files, once per item. */
   function lazyFetchVodInfo(item) {
-    if ((item.plot || item.description) && item.cast) return;
-    if (!item.stream_id) return;
+    if (item._infoFetched || !item.stream_id) return;
+    item._infoFetched = true;
     fetchJSON(apiUrl('action=get_vod_info&vod_id=' + encodeURIComponent(item.stream_id))).then(function (data) {
       var info = data && (data.info || data.movie_data || data);
-      if (!info || detailItem !== item) return;
+      if (!info) return;
+      item._subs = extractSubs(info);
+      item.container_extension = item.container_extension || info.container_extension;
+      if (detailItem !== item) return;
       if (info.plot || info.description) setText('vod-detail-plot', info.plot || info.description);
       if (info.cast) {
         setText('vod-detail-cast', info.cast);
@@ -429,7 +449,6 @@
         setText('vod-detail-director', info.director);
         document.getElementById('vod-detail-director-row').style.display = '';
       }
-      item.container_extension = item.container_extension || info.container_extension;
     }).catch(function () {});
   }
 
@@ -516,7 +535,8 @@
         series_id: meta.series_id || '',
         season: meta.season || '',
         episode: meta.episode || '',
-        resume: meta.resume || 0
+        resume: meta.resume || 0,
+        subs: meta.subs || []
       }));
     } catch (e) {}
     window.location.href = '../pages/player.html?url=' + encodeURIComponent(url) + '&title=' + encodeURIComponent(meta.name || '');
@@ -531,7 +551,8 @@
       ext: ext,
       name: titleOf(detailItem),
       icon: posterOf(detailItem),
-      resume: prog && prog.pos > 30 ? prog.pos : 0
+      resume: prog && prog.pos > 30 ? prog.pos : 0,
+      subs: detailItem._subs || []
     });
   }
   function resumePlay(entry) {

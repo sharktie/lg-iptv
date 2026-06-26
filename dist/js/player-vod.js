@@ -136,7 +136,7 @@
   }
 
   /* ── Controls ────────────────────────────────────────────────────────── */
-  var controls = ['ctrl-rewind', 'ctrl-play', 'ctrl-forward', 'ctrl-mute', 'ctrl-fullscreen'].map(function (id) {
+  var controls = ['ctrl-rewind', 'ctrl-play', 'ctrl-forward', 'ctrl-mute', 'ctrl-subs', 'ctrl-fullscreen'].map(function (id) {
     return document.getElementById(id);
   }).filter(Boolean);
   var backBtn = document.getElementById('player-back-btn');
@@ -185,10 +185,84 @@
       case 'ctrl-mute':
         toggleMute();
         break;
+      case 'ctrl-subs':
+        openSubs();
+        break;
       case 'ctrl-fullscreen':
         toggleFullscreen();
         break;
     }
+  }
+
+  /* ── Subtitles ───────────────────────────────────────────────────────── */
+  var subsMenu = document.getElementById('subs-menu');
+  var subsList = document.getElementById('subs-menu-list');
+  var subsOpen = false,
+    subsIdx = 0,
+    subsOptions = [];
+  var activeSubLabel = 'off';
+  var SUBS_PREF_KEY = 'vod_subs_pref';
+  function buildSubsOptions() {
+    var tracks = window.player && player.listSubtitles ? player.listSubtitles() : [];
+    subsOptions = [{
+      label: 'Off',
+      track: 'off'
+    }];
+    tracks.forEach(function (t) {
+      subsOptions.push({
+        label: t.label,
+        track: t
+      });
+    });
+  }
+  function openSubs() {
+    buildSubsOptions();
+    subsList.innerHTML = '';
+    subsOptions.forEach(function (opt, i) {
+      var b = document.createElement('button');
+      b.className = 'subs-opt' + (opt.label.toLowerCase() === activeSubLabel ? ' current' : '');
+      b.textContent = opt.label;
+      b.addEventListener('click', function () {
+        subsIdx = i;
+        applySubs();
+      });
+      subsList.appendChild(b);
+    });
+    subsIdx = 0;
+    for (var i = 0; i < subsOptions.length; i++) {
+      if (subsOptions[i].label.toLowerCase() === activeSubLabel) {
+        subsIdx = i;
+        break;
+      }
+    }
+    if (osd) osd.classList.remove('osd-hidden'); // keep OSD visible behind the menu
+    subsMenu.hidden = false;
+    subsOpen = true;
+    paintSubs();
+    clearTimeout(osdTimer); // keep OSD up while choosing
+  }
+  function closeSubs() {
+    subsMenu.hidden = true;
+    subsOpen = false;
+    paintFocus();
+    showOsd();
+  }
+  function paintSubs() {
+    var opts = subsList.querySelectorAll('.subs-opt');
+    for (var i = 0; i < opts.length; i++) opts[i].classList.toggle('tv-focus-visible', i === subsIdx);
+  }
+  function applySubs() {
+    var opt = subsOptions[subsIdx];
+    if (!opt) {
+      closeSubs();
+      return;
+    }
+    if (window.player && player.setSubtitle) player.setSubtitle(opt.track);
+    activeSubLabel = (opt.label || 'off').toLowerCase();
+    try {
+      localStorage.setItem(SUBS_PREF_KEY, activeSubLabel);
+    } catch (e) {}
+    closeSubs();
   }
   function goBack() {
     try {
@@ -277,6 +351,27 @@
   /* ── D-pad ───────────────────────────────────────────────────────────── */
   window.addEventListener('keydown', function (e) {
     var kc = e.keyCode || e.which;
+
+    // Subtitle menu captures input while open
+    if (subsOpen) {
+      e.preventDefault();
+      if (kc === KEY.UP) {
+        if (subsIdx > 0) {
+          subsIdx--;
+          paintSubs();
+        }
+      } else if (kc === KEY.DOWN) {
+        if (subsIdx < subsOptions.length - 1) {
+          subsIdx++;
+          paintSubs();
+        }
+      } else if (kc === KEY.ENTER) {
+        applySubs();
+      } else {
+        closeSubs();
+      } // BACK / LEFT / RIGHT / etc.
+      return;
+    }
     if (kc === KEY.BACK || kc === KEY.ESC) {
       e.preventDefault();
       goBack();
@@ -349,4 +444,24 @@
   updateMuteIcon();
   paintFocus();
   showOsd();
+
+  /* External subtitle files passed from vod.js (best-effort) */
+  if (meta && meta.subs && meta.subs.length && window.player && player.addExternalSubs) {
+    player.addExternalSubs(meta.subs);
+  }
+  /* Re-apply the user's last subtitle choice once tracks have loaded */
+  try {
+    activeSubLabel = localStorage.getItem(SUBS_PREF_KEY) || 'off';
+  } catch (e) {}
+  if (activeSubLabel && activeSubLabel !== 'off') {
+    setTimeout(function () {
+      buildSubsOptions();
+      for (var i = 0; i < subsOptions.length; i++) {
+        if (subsOptions[i].label.toLowerCase() === activeSubLabel) {
+          if (window.player && player.setSubtitle) player.setSubtitle(subsOptions[i].track);
+          break;
+        }
+      }
+    }, 2500);
+  }
 })();

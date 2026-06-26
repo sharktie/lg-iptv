@@ -26,27 +26,24 @@ function _isDolby(c) {
   c = (c || "").toLowerCase();
   return c.indexOf("ec-3") !== -1 || c.indexOf("ac-3") !== -1 || c.indexOf("eac3") !== -1 || c.indexOf("ac3") !== -1 || c.indexOf("mp4a.a5") !== -1 || c.indexOf("mp4a.a6") !== -1;
 }
-function _dolbyName(c) {
-  c = (c || "").toLowerCase();
-  if (c.indexOf("ec-3") !== -1 || c.indexOf("eac3") !== -1 || c.indexOf("mp4a.a6") !== -1) return "Dolby Digital+";
-  return "Dolby Digital";
-}
 function _isHevc(s) {
   s = (s || "").toLowerCase();
   return s.indexOf("hvc") !== -1 || s.indexOf("hev") !== -1 || s.indexOf("h265") !== -1 || s.indexOf("hevc") !== -1 || s.indexOf("h.265") !== -1;
 }
 
 /*
- * IPTVPlayer — tiered fallback so a stream gets every reasonable shot at playing.
- * Order (each tier only runs if the previous one fails or stalls):
- *   1. Native <video> on the original URL  — the platform/hardware pipeline,
- *      the ONLY path that can do HEVC / Dolby, given the first clean attempt.
- *   2. hls.js (MSE)                          — software HLS demux (H.264/AAC).
- *   3. Native <video> on the raw .ts URL     — platform pipeline on raw MPEG-TS,
- *      rescues HLS-packaging failures (live only).
- * Transitions are error-driven (fast); a watchdog only guards true stalls and is
- * cancelled the moment the format is accepted (loadedmetadata) so slow 4K buffers
- * aren't cut off. _gen guards channel changes; _tok guards stale attempt events.
+ * IPTVPlayer — simple, honest tiered playback.
+ *
+ *   Tier 1  native <video>   (platform/hardware pipeline — HEVC, HDR, Dolby)
+ *   Tier 2  hls.js (MSE)     (software HLS demux — H.264/AAC)
+ *   Tier 3  native on .ts    (raw MPEG-TS via the platform; live only)
+ *
+ * Auto-advance happens ONLY on a real `error` or a genuine no-data stall.
+ * "Playing" = success; we never second-guess a stream that's actually running
+ * (the old decoded-frame heuristic falsely failed HDR playback). If a stream
+ * plays but is black, the user cycles engines manually with the RED button.
+ *
+ * Remote: RED = cycle engine · GREEN = diagnostics · YELLOW = lowest quality.
  */
 var IPTVPlayer = /*#__PURE__*/function () {
   function IPTVPlayer() {
@@ -55,25 +52,29 @@ var IPTVPlayer = /*#__PURE__*/function () {
     this._pipWrap = document.getElementById("pip-wrap");
     this.hls = null;
     this._watchdog = null;
-    this._monitor = null;
-    this._gen = 0; // bumped per play() — neutralises a previous channel
-    this._tok = 0; // bumped per attempt — neutralises a previous tier
+    this._gen = 0; // bumped per play()    — neutralises a previous channel
+    this._tok = 0; // bumped per attempt   — neutralises a previous tier
+    this._manual = false;
+    this._lowQuality = false;
     this._diag = [];
     this._codecs = null;
     this._res = "";
     this._activeEngine = "";
     this.video.tabIndex = -1; // input handled by dpad.js
-    this._setupDiag();
+    this._setupKeys();
   }
 
-  // ── Live diagnostics overlay (GREEN button) ─────────────────────────────────
+  // ── Remote color-button shortcuts ───────────────────────────────────────────
   return _createClass(IPTVPlayer, [{
-    key: "_setupDiag",
-    value: function _setupDiag() {
+    key: "_setupKeys",
+    value: function _setupKeys() {
       var self = this;
       window.addEventListener("keydown", function (e) {
         var kc = e.keyCode || e.which;
-        if (kc === 404 /* GREEN */ || kc === 68 /* 'd' */) {
+        if (kc === 403 /* RED */ || kc === 67 /* 'c' */) {
+          e.preventDefault();
+          self.cycleEngine();
+        } else if (kc === 404 /* GREEN */ || kc === 68 /* 'd' */) {
           e.preventDefault();
           self._toggleDiag();
         } else if (kc === 405 /* YELLOW */ || kc === 76 /* 'l' */) {
@@ -82,38 +83,8 @@ var IPTVPlayer = /*#__PURE__*/function () {
         }
       }, true);
     }
-  }, {
-    key: "_toggleDiag",
-    value: function _toggleDiag() {
-      if (this._diagEl) {
-        clearInterval(this._diagTimer);
-        this._diagTimer = null;
-        if (this._diagEl.parentNode) this._diagEl.parentNode.removeChild(this._diagEl);
-        this._diagEl = null;
-        return;
-      }
-      var el = document.createElement("div");
-      el.id = "player-diag";
-      el.style.cssText = "position:absolute;top:14px;left:14px;z-index:99999;background:rgba(0,0,0,0.82);" + "color:#43e57a;font:14px/1.65 monospace;padding:14px 18px;border-radius:12px;" + "pointer-events:none;white-space:pre;letter-spacing:0.3px;";
-      (this._pipWrap || document.body).appendChild(el);
-      this._diagEl = el;
-      var self = this;
-      this._diagTimer = setInterval(function () {
-        self._updateDiag();
-      }, 500);
-      this._updateDiag();
-    }
-  }, {
-    key: "_updateDiag",
-    value: function _updateDiag() {
-      if (!this._diagEl) return;
-      var v = this.video,
-        frames = this._decodedFrames();
-      var lines = ["engine  : " + (this._activeEngine || "—") + "   tier " + ((this._attemptIdx || 0) + 1) + "/" + (this._attempts && this._attempts.length || 1), "res     : " + (v.videoWidth || 0) + "×" + (v.videoHeight || 0), "codec   : " + (this._codecs ? (this._codecs.v || "?") + " / " + (this._codecs.a || "?") : "n/a (native path)"), "time    : " + (v.currentTime || 0).toFixed(1) + (isFinite(v.duration) ? " / " + v.duration.toFixed(1) : " (live)") + "   paused:" + v.paused, "ready   : " + v.readyState + "   network:" + v.networkState, "frames  : " + (frames < 0 ? "n/a (no API)" : frames), "error   : " + (v.error ? _mediaErrText(v.error) : "—"), "lowQ    : " + (this._lowQuality ? "on" : "off"), "tried   : " + (this._diag && this._diag.length ? this._diag.join(" | ") : "—"), "", "(GREEN close · YELLOW lowest-quality)"];
-      this._diagEl.textContent = lines.join("\n");
-    }
 
-    // ── UI messages ───────────────────────────────────────────────────────────
+    // ── UI messages ─────────────────────────────────────────────────────────────
   }, {
     key: "_msg",
     value: function _msg(text) {
@@ -132,15 +103,15 @@ var IPTVPlayer = /*#__PURE__*/function () {
   }, {
     key: "_showError",
     value: function _showError() {
-      // Keep the technical detail for the GREEN debug overlay only — the user
-      // sees a clean, friendly message with no scary codes.
-      this._lastError = this._diag.slice();
+      this._lastError = this._diag.slice(); // technical detail → GREEN overlay only
       var diagStr = this._diag.join(" ");
       var hint = "This channel couldn’t be played right now.";
       if (this._codecs && _isHevc(this._codecs.v) || _isHevc(diagStr)) {
-        hint = "This may be a 4K/HEVC channel — try the HD version if your provider has one.";
+        hint = "This may be a 4K/HEVC channel — press RED to try another player, or use the HD version.";
       } else if (this._codecs && _isDolby(this._codecs.a)) {
-        hint = "This channel uses Dolby audio — try the HD version if your provider has one.";
+        hint = "This channel uses Dolby audio — press RED to try another player, or use the HD version.";
+      } else {
+        hint = "Press RED to try a different player.";
       }
       var el = document.getElementById("player-msg");
       if (el) {
@@ -148,8 +119,71 @@ var IPTVPlayer = /*#__PURE__*/function () {
         el.style.display = "flex";
       }
     }
+    // Brief centred toast (engine name when cycling).
+  }, {
+    key: "_flash",
+    value: function _flash(text) {
+      var el = this._flashEl;
+      if (!el) {
+        el = document.createElement("div");
+        el.style.cssText = "position:absolute;top:16px;left:50%;z-index:99999;" + "-webkit-transform:translateX(-50%);transform:translateX(-50%);" + "background:rgba(0,0,0,0.78);color:#fff;font:600 16px/1 'Outfit',-apple-system,sans-serif;" + "padding:12px 22px;border-radius:999px;pointer-events:none;";
+        (this._pipWrap || document.body).appendChild(el);
+        this._flashEl = el;
+      }
+      el.textContent = text;
+      el.style.display = "block";
+      clearTimeout(this._flashTimer);
+      var self = this;
+      this._flashTimer = setTimeout(function () {
+        if (self._flashEl) self._flashEl.style.display = "none";
+      }, 1500);
+    }
 
-    // ── Engine plumbing ───────────────────────────────────────────────────────
+    // ── Diagnostics overlay (GREEN) ─────────────────────────────────────────────
+  }, {
+    key: "_decodedFrames",
+    value: function _decodedFrames() {
+      // display-only; never drives fallback
+      var v = this.video;
+      try {
+        if (v.getVideoPlaybackQuality) {
+          var q = v.getVideoPlaybackQuality();
+          if (q && typeof q.totalVideoFrames === "number") return q.totalVideoFrames;
+        }
+      } catch (_) {}
+      if (typeof v.webkitDecodedFrameCount === "number") return v.webkitDecodedFrameCount;
+      return -1;
+    }
+  }, {
+    key: "_toggleDiag",
+    value: function _toggleDiag() {
+      if (this._diagEl) {
+        clearInterval(this._diagTimer);
+        this._diagTimer = null;
+        if (this._diagEl.parentNode) this._diagEl.parentNode.removeChild(this._diagEl);
+        this._diagEl = null;
+        return;
+      }
+      var el = document.createElement("div");
+      el.style.cssText = "position:absolute;top:14px;left:14px;z-index:99999;background:rgba(0,0,0,0.82);" + "color:#43e57a;font:14px/1.65 monospace;padding:14px 18px;border-radius:12px;" + "pointer-events:none;white-space:pre;letter-spacing:0.3px;";
+      (this._pipWrap || document.body).appendChild(el);
+      this._diagEl = el;
+      var self = this;
+      this._diagTimer = setInterval(function () {
+        self._updateDiag();
+      }, 500);
+      this._updateDiag();
+    }
+  }, {
+    key: "_updateDiag",
+    value: function _updateDiag() {
+      if (!this._diagEl) return;
+      var v = this.video,
+        frames = this._decodedFrames();
+      this._diagEl.textContent = ["engine  : " + (this._activeEngine || "—") + (this._manual ? " (manual)" : "") + "   tier " + ((this._attemptIdx || 0) + 1) + "/" + (this._attempts && this._attempts.length || 1), "res     : " + (v.videoWidth || 0) + "×" + (v.videoHeight || 0), "codec   : " + (this._codecs ? (this._codecs.v || "?") + " / " + (this._codecs.a || "?") : "n/a (native)"), "time    : " + (v.currentTime || 0).toFixed(1) + (isFinite(v.duration) ? " / " + v.duration.toFixed(1) : " (live)") + "   paused:" + v.paused, "ready   : " + v.readyState + "   network:" + v.networkState, "frames  : " + (frames < 0 ? "n/a" : frames), "error   : " + (v.error ? _mediaErrText(v.error) : "—"), "lowQ    : " + (this._lowQuality ? "on" : "off"), "tried   : " + (this._diag && this._diag.length ? this._diag.join(" | ") : "—"), "", "(RED cycle · GREEN close · YELLOW lowest)"].join("\n");
+    }
+
+    // ── Engine plumbing ─────────────────────────────────────────────────────────
   }, {
     key: "destroyHls",
     value: function destroyHls() {
@@ -167,65 +201,6 @@ var IPTVPlayer = /*#__PURE__*/function () {
         clearTimeout(this._watchdog);
         this._watchdog = null;
       }
-      if (this._monitor) {
-        clearInterval(this._monitor);
-        this._monitor = null;
-      }
-    }
-
-    // How many video frames the decoder has actually produced (best-effort —
-    // lets us catch "audio plays, video is black" failures). -1 = can't tell.
-  }, {
-    key: "_decodedFrames",
-    value: function _decodedFrames() {
-      var v = this.video;
-      try {
-        if (v.getVideoPlaybackQuality) {
-          var q = v.getVideoPlaybackQuality();
-          if (q && typeof q.totalVideoFrames === "number") return q.totalVideoFrames;
-        }
-      } catch (_) {}
-      if (typeof v.webkitDecodedFrameCount === "number") return v.webkitDecodedFrameCount;
-      return -1;
-    }
-
-    // Watch for REAL playback. Success = time advancing AND frames decoding.
-    // Catches: a total stall, and "black screen" (time advances via audio but no
-    // video frames) — both fall through to the next tier instead of hanging.
-  }, {
-    key: "_monitorPlayback",
-    value: function _monitorPlayback(gen, tok, label) {
-      this._clearWatchdog();
-      var self = this,
-        v = this.video,
-        start = Date.now();
-      var lastT = -1,
-        blackSince = 0;
-      this._monitor = setInterval(function () {
-        if (!self._alive(gen, tok)) {
-          self._clearWatchdog();
-          return;
-        }
-        var t = v.currentTime || 0;
-        var advancing = t > 0.05 && t > lastT + 0.05; // actually started AND moving
-        lastT = t;
-        var frames = self._decodedFrames();
-        if (advancing) {
-          if (frames !== 0) {
-            self._clearWatchdog();
-            self._hideMsg();
-            return;
-          } // real video (or unknown)
-          if (!blackSince) blackSince = Date.now();else if (Date.now() - blackSince > 3500) {
-            self._next(gen, label + ": video not decoding — black screen" + (self._res ? " (" + self._res + ")" : ""));
-          }
-        } else {
-          blackSince = 0;
-        }
-        if (Date.now() - start > 15000 && t < 0.2) {
-          self._next(gen, label + ": timed out — no playback after 15s");
-        }
-      }, 1000);
     }
   }, {
     key: "_resetVideo",
@@ -240,16 +215,10 @@ var IPTVPlayer = /*#__PURE__*/function () {
         this.video.load();
       } catch (_) {}
     }
-
-    // Re-play the current stream pinned to the lowest variant — often an SDR /
-    // 8-bit rendition that renders where the HDR/10-bit one decodes to black.
   }, {
-    key: "tryLowestQuality",
-    value: function tryLowestQuality() {
-      if (!this._lastUrl) return;
-      this._lowQuality = true;
-      this.play(this._lastUrl);
-      this._msg("Trying lowest quality…");
+    key: "_alive",
+    value: function _alive(gen, tok) {
+      return gen === this._gen && tok === this._tok;
     }
   }, {
     key: "play",
@@ -258,7 +227,8 @@ var IPTVPlayer = /*#__PURE__*/function () {
       if (url !== this._lastUrl) this._lowQuality = false; // new channel → normal ABR
       this._lastUrl = url;
       var gen = ++this._gen;
-      this._tok++; // any in-flight attempt is now stale
+      this._tok++;
+      this._manual = false;
       this._clearWatchdog();
       this._resetVideo();
       this.video.style.display = "block";
@@ -276,17 +246,20 @@ var IPTVPlayer = /*#__PURE__*/function () {
       var isHls = url.indexOf(".m3u8") !== -1;
       var list = [{
         engine: "native",
-        url: url
+        url: url,
+        label: "Native"
       }];
       if (isHls) {
         list.push({
           engine: "hls",
-          url: url
+          url: url,
+          label: "HLS"
         });
         var ts = url.replace(/\.m3u8(\?[^#]*)?$/i, ".ts$1");
         if (ts !== url) list.push({
           engine: "native",
-          url: ts
+          url: ts,
+          label: "Native (TS)"
         });
       }
       return list;
@@ -302,56 +275,89 @@ var IPTVPlayer = /*#__PURE__*/function () {
         return;
       }
       var tok = this._tok;
-      this._activeEngine = a.engine === "hls" ? "hls.js" : "native" + (a.url.indexOf(".ts") !== -1 ? " (.ts)" : "");
+      this._activeEngine = a.label;
       if (a.engine === "hls") this._playHls(gen, tok, a.url);else this._playNative(gen, tok, a.url);
     }
 
-    // Advance to the next tier. Bumps _tok first so the failing tier's lingering
-    // listeners (and any spurious "error" from resetting the element) go silent.
+    // Auto-advance to the next tier — disabled in manual mode (the user drives).
   }, {
     key: "_next",
     value: function _next(gen, reason) {
       if (gen !== this._gen) return;
       this._clearWatchdog();
       if (reason) this._diag.push(reason);
+      if (this._manual) return;
       this._tok++;
       this._attemptIdx++;
       this.destroyHls();
       this._runAttempt(gen);
     }
+
+    // RED: manually switch to the next engine and stay there.
   }, {
-    key: "_alive",
-    value: function _alive(gen, tok) {
-      return gen === this._gen && tok === this._tok;
+    key: "cycleEngine",
+    value: function cycleEngine() {
+      if (!this._lastUrl || !this._attempts || this._attempts.length < 2) return;
+      this._manual = true;
+      var gen = ++this._gen;
+      this._tok++;
+      this._clearWatchdog();
+      this.destroyHls();
+      this._attemptIdx = (this._attemptIdx + 1) % this._attempts.length;
+      this._flash("Player: " + this._attempts[this._attemptIdx].label);
+      this._msg("Loading…");
+      this._resetVideo();
+      this.video.style.display = "block";
+      this._runAttempt(gen);
+    }
+
+    // Stall watchdog — fires only if NOTHING loads (no data, no error). Auto only.
+  }, {
+    key: "_arm",
+    value: function _arm(gen, tok) {
+      this._clearWatchdog();
+      if (this._manual) return;
+      var self = this;
+      this._watchdog = setTimeout(function () {
+        if (self._alive(gen, tok)) self._next(gen, self._activeEngine + ": no data after 12s");
+      }, 12000);
     }
   }, {
     key: "_playNative",
     value: function _playNative(gen, tok, url) {
       if (!this._alive(gen, tok)) return;
       var self = this;
+      var onSuccess = function onSuccess() {
+        if (self._alive(gen, tok)) {
+          self._clearWatchdog();
+          self._hideMsg();
+        }
+      };
+      var onData = function onData() {
+        if (self._alive(gen, tok)) self._clearWatchdog();
+      }; // data flowing → not a stall
       var onMeta = function onMeta() {
-        if (!self._alive(gen, tok)) return;
-        if (self.video.videoWidth && self.video.videoHeight) self._res = self.video.videoWidth + "×" + self.video.videoHeight;
+        if (self._alive(gen, tok) && self.video.videoWidth) self._res = self.video.videoWidth + "×" + self.video.videoHeight;
       };
       var onError = function onError() {
         if (self._alive(gen, tok)) self._next(gen, "Native: " + _mediaErrText(self.video.error));
       };
-      var onPlay = function onPlay() {
-        if (self._alive(gen, tok)) self._hideMsg();
-      }; // snappy; monitor still checks frames
+      this.video.addEventListener("playing", onSuccess, {
+        once: true
+      });
+      this.video.addEventListener("loadeddata", onData, {
+        once: true
+      });
       this.video.addEventListener("loadedmetadata", onMeta, {
         once: true
       });
       this.video.addEventListener("error", onError, {
         once: true
       });
-      this.video.addEventListener("playing", onPlay, {
-        once: true
-      });
       this.video.src = url;
       this.video.load();
       this.video.play().catch(function () {});
-      this._monitorPlayback(gen, tok, "Native");
+      this._arm(gen, tok);
     }
   }, {
     key: "_playHls",
@@ -368,7 +374,6 @@ var IPTVPlayer = /*#__PURE__*/function () {
     value: function _attachHls(gen, tok, url) {
       this.destroyHls();
       var self = this;
-      // Tuned for fast channel start + snappy failure: small buffer, few retries.
       this.hls = new Hls({
         enableWorker: false,
         debug: false,
@@ -394,10 +399,9 @@ var IPTVPlayer = /*#__PURE__*/function () {
             };
             if (lv.width && lv.height) self._res = lv.width + "×" + lv.height;
           }
-          // Audio fallback: if more than one track, prefer a non-Dolby one
-          // (a stream that defaults to Dolby often carries an AAC alternate).
           var tracks = self.hls.audioTracks;
           if (tracks && tracks.length > 1) {
+            // prefer a non-Dolby audio track
             for (var i = 0; i < tracks.length; i++) {
               var ac = (tracks[i].audioCodec || tracks[i].codec || "").toLowerCase();
               if (ac && !_isDolby(ac)) {
@@ -412,7 +416,7 @@ var IPTVPlayer = /*#__PURE__*/function () {
             self._codecs.a = tracks[0].audioCodec || tracks[0].codec || "";
           }
           if (self._lowQuality && self.hls.levels && self.hls.levels.length) {
-            self.hls.autoLevelCapping = 0; // pin the lowest rendition
+            self.hls.autoLevelCapping = 0;
             self.hls.currentLevel = 0;
           }
         } catch (_) {}
@@ -425,11 +429,113 @@ var IPTVPlayer = /*#__PURE__*/function () {
         self._next(gen, "HLS: " + d);
       });
       this.video.addEventListener("playing", function () {
-        if (self._alive(gen, tok)) self._hideMsg();
+        if (self._alive(gen, tok)) {
+          self._clearWatchdog();
+          self._hideMsg();
+        }
       }, {
         once: true
       });
-      this._monitorPlayback(gen, tok, "HLS");
+      this.video.addEventListener("loadeddata", function () {
+        if (self._alive(gen, tok)) self._clearWatchdog();
+      }, {
+        once: true
+      });
+      this._arm(gen, tok);
+    }
+
+    // ── Subtitles ───────────────────────────────────────────────────────────────
+  }, {
+    key: "listSubtitles",
+    value: function listSubtitles() {
+      var out = [];
+      if (this.hls && this.hls.subtitleTracks) {
+        for (var i = 0; i < this.hls.subtitleTracks.length; i++) {
+          var t = this.hls.subtitleTracks[i];
+          out.push({
+            src: "hls",
+            id: i,
+            label: t.name || t.lang || "Subtitle " + (i + 1)
+          });
+        }
+      }
+      var tt = this.video.textTracks;
+      if (tt) {
+        for (var _i = 0; _i < tt.length; _i++) {
+          var k = tt[_i].kind;
+          if (k === "subtitles" || k === "captions" || k === "") {
+            out.push({
+              src: "native",
+              id: _i,
+              label: tt[_i].label || tt[_i].language || "Track " + (_i + 1)
+            });
+          }
+        }
+      }
+      return out;
+    }
+  }, {
+    key: "setSubtitle",
+    value: function setSubtitle(track) {
+      var tt = this.video.textTracks;
+      if (tt) for (var i = 0; i < tt.length; i++) tt[i].mode = "disabled";
+      if (this.hls) {
+        try {
+          this.hls.subtitleDisplay = false;
+          this.hls.subtitleTrack = -1;
+        } catch (_) {}
+      }
+      if (!track || track === "off") {
+        this._activeSub = "off";
+        return;
+      }
+      if (track.src === "hls" && this.hls) {
+        try {
+          this.hls.subtitleDisplay = true;
+          this.hls.subtitleTrack = track.id;
+        } catch (_) {}
+      } else if (track.src === "native" && tt && tt[track.id]) {
+        tt[track.id].mode = "showing";
+      }
+      this._activeSub = track;
+    }
+  }, {
+    key: "addExternalSubs",
+    value: function addExternalSubs(list) {
+      if (!list || !list.length) return;
+      var self = this;
+      list.forEach(function (s) {
+        var url = s && (s.url || s.src || s);
+        if (!url || typeof url !== "string") return;
+        var lang = s && (s.lang || s.language) || "";
+        fetch(url).then(function (r) {
+          return r.ok ? r.text() : null;
+        }).then(function (text) {
+          if (!text) return;
+          var vtt = /^WEBVTT/.test(text.trim()) ? text : self._srtToVtt(text);
+          var el = document.createElement("track");
+          el.kind = "subtitles";
+          el.label = s && s.label || lang.toUpperCase() || "Subtitles";
+          if (lang) el.srclang = lang;
+          el.src = URL.createObjectURL(new Blob([vtt], {
+            type: "text/vtt"
+          }));
+          self.video.appendChild(el);
+        }).catch(function () {});
+      });
+    }
+  }, {
+    key: "_srtToVtt",
+    value: function _srtToVtt(srt) {
+      return "WEBVTT\n\n" + String(srt).replace(/\r+/g, "").replace(/^\d+\s*$/gm, "").replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, "$1.$2").replace(/\n{3,}/g, "\n\n").trim();
+    }
+  }, {
+    key: "tryLowestQuality",
+    value: function tryLowestQuality() {
+      if (!this._lastUrl) return;
+      this._lowQuality = true;
+      this.play(this._lastUrl);
+      this._flash("Lowest quality");
     }
   }, {
     key: "_loadHls",

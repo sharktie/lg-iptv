@@ -32,6 +32,39 @@
     font-family: 'SF Mono', 'Consolas', monospace;
 }
 
+/* ── Subtitle picker ──────────────────────────────────────────────────── */
+#subs-menu {
+    position: absolute;
+    right: 40px;
+    bottom: 122px;
+    min-width: 230px;
+    max-height: 60vh;
+    overflow-y: auto;
+    background: rgba(18,20,28,0.96);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 16px;
+    padding: 10px;
+    z-index: 30;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.6);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+}
+#subs-menu-title {
+    font-size: 12px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.07em; color: rgba(255,255,255,0.5);
+    padding: 6px 12px 10px;
+}
+.subs-opt {
+    display: block; width: 100%; text-align: left;
+    padding: 13px 14px; margin: 2px 0;
+    border: none; border-radius: 11px;
+    background: transparent; color: #fff;
+    font-size: 16px; font-family: inherit; cursor: pointer;
+    -webkit-transition: background 0.12s ease; transition: background 0.12s ease;
+}
+.subs-opt.current::after { content: " ✓"; color: var(--accent, #3b82f6); }
+.subs-opt.tv-focus-visible { background: rgba(255,255,255,0.16); outline: none; }
+
 /* ══════════════════════════════════════════════════════════════════════
    LIVE TV — PiP bar (channel name + fullscreen button)
    ══════════════════════════════════════════════════════════════════════ */
