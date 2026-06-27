@@ -371,6 +371,13 @@
                 if (!info) return;
                 item._subs = extractSubs(info);
                 item.container_extension = item.container_extension || info.container_extension;
+                var imdb = info.imdb || info.imdb_id || info.tmdb_imdb || "";
+                var tmdb = info.tmdb || info.tmdb_id || "";
+                if (imdb) item.imdb_id = imdb;
+                if (tmdb) item.tmdb_id = tmdb;
+                if (!item.year && (info.releasedate || info.releaseDate || info.year)) {
+                    item.year = String(info.releasedate || info.releaseDate || info.year).slice(0, 4);
+                }
                 if (detailItem !== item) return;
                 if (info.plot || info.description) setText('vod-detail-plot', info.plot || info.description);
                 if (info.cast)     { setText('vod-detail-cast', info.cast); document.getElementById('vod-detail-cast-row').style.display = ''; }
@@ -446,6 +453,9 @@
             localStorage.setItem('iptv_play_meta', JSON.stringify({
                 url: url, key: key, type: meta.type, id: meta.id, ext: meta.ext,
                 name: meta.name || '', icon: meta.icon || '',
+                title: meta.name || '', searchTitle: meta.name || '',
+                year: meta.year || '',
+                imdb_id: meta.imdb_id || '', tmdb_id: meta.tmdb_id || '',
                 series_id: meta.series_id || '', season: meta.season || '', episode: meta.episode || '',
                 resume: meta.resume || 0, subs: meta.subs || []
             }));
@@ -461,6 +471,8 @@
         playItem({
             type: 'movie', id: detailItem.stream_id, ext: ext,
             name: titleOf(detailItem), icon: posterOf(detailItem),
+            year: yearOf(detailItem) || detailItem.year || '',
+            imdb_id: detailItem.imdb_id || '', tmdb_id: detailItem.tmdb_id || '',
             resume: (prog && prog.pos > 30) ? prog.pos : 0,
             subs: detailItem._subs || []
         });

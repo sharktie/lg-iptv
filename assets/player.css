@@ -54,6 +54,19 @@
     letter-spacing: 0.07em; color: rgba(255,255,255,0.5);
     padding: 6px 12px 10px;
 }
+.subs-heading {
+    padding: 10px 12px 6px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(255,255,255,0.38);
+}
+.subs-note {
+    padding: 10px 14px;
+    color: rgba(255,255,255,0.62);
+    font-size: 15px;
+}
 .subs-opt {
     display: block; width: 100%; text-align: left;
     padding: 13px 14px; margin: 2px 0;
@@ -64,6 +77,15 @@
 }
 .subs-opt.current::after { content: " ✓"; color: var(--accent, #3b82f6); }
 .subs-opt.tv-focus-visible { background: rgba(255,255,255,0.16); outline: none; }
+
+.subtitle-rtl::cue {
+    direction: rtl;
+    unicode-bidi: plaintext;
+    text-align: right;
+}
+.subtitle-rtl::-webkit-media-text-track-display {
+    direction: rtl;
+}
 
 /* ══════════════════════════════════════════════════════════════════════
    LIVE TV — PiP bar (channel name + fullscreen button)

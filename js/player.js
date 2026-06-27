@@ -21,6 +21,124 @@ function _isHevc(s) {
            s.indexOf("h265") !== -1 || s.indexOf("hevc") !== -1 || s.indexOf("h.265") !== -1;
 }
 
+function _lsGet(key, fallback) {
+    try {
+        var raw = localStorage.getItem(key);
+        return raw !== null ? JSON.parse(raw) : fallback;
+    } catch (_) {
+        return fallback;
+    }
+}
+
+function _lsSet(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) {}
+}
+
+function _splitLangCodes(value) {
+    return String(value || "")
+        .split(/[,\s]+/)
+        .map(function (s) { return s.trim().toLowerCase(); })
+        .filter(function (s) { return !!s; });
+}
+
+function _langName(code) {
+    var map = {
+        en: "English", ar: "Arabic", es: "Spanish", fr: "French", de: "German",
+        it: "Italian", pt: "Portuguese", ru: "Russian", nl: "Dutch", pl: "Polish",
+        tr: "Turkish", fa: "Persian", he: "Hebrew", ur: "Urdu", hi: "Hindi",
+        zh: "Chinese", ja: "Japanese", ko: "Korean", el: "Greek", sv: "Swedish",
+        no: "Norwegian", da: "Danish", fi: "Finnish", cs: "Czech", ro: "Romanian",
+        hu: "Hungarian", bg: "Bulgarian", hr: "Croatian", sk: "Slovak", sl: "Slovenian",
+        uk: "Ukrainian", sr: "Serbian", id: "Indonesian", th: "Thai", vi: "Vietnamese",
+        ro: "Romanian", bn: "Bengali"
+    };
+    var c = String(code || "").toLowerCase();
+    return map[c] || (c ? c.toUpperCase() : "English");
+}
+
+function _isRtlLanguage(code) {
+    var c = String(code || "").toLowerCase();
+    return c === "ar" || c === "fa" || c === "he" || c === "ur" || c === "ps" || c === "dv";
+}
+
+var _IPTV_PREFIX_LANGS = {
+    EN: 1, ES: 1, AR: 1, FR: 1, DE: 1, IT: 1, PT: 1, RU: 1, TR: 1, FA: 1, HE: 1, UR: 1,
+    HI: 1, PL: 1, NL: 1, SV: 1, DA: 1, FI: 1, CS: 1, RO: 1, HU: 1, BG: 1, HR: 1, SK: 1, SL: 1,
+    UK: 1, EL: 1, SR: 1, JA: 1, KO: 1, ZH: 1, VI: 1, TH: 1, ID: 1, BN: 1, US: 1, GB: 1, MULTI: 1, MULT: 1
+};
+var _IPTV_PREFIX_SERVICES = {
+    NF: 1, AMZ: 1, AMZN: 1, NETFLIX: 1, AMAZON: 1, DISNEY: 1, DSNY: 1, DSNP: 1, HBO: 1, MAX: 1,
+    HULU: 1, APPLE: 1, ATVP: 1, PMNT: 1, PRIME: 1, PEACOCK: 1, PARAMOUNT: 1, STARZ: 1
+};
+var _IPTV_PREFIX_QUALITY = {
+    "4K": 1, HD: 1, FHD: 1, UHD: 1, TOP: 1, HDR: 1, HEVC: 1, "2160P": 1, "1080P": 1, "720P": 1,
+    BLURAY: 1, BRRIP: 1, WEBRIP: 1, WEB: 1, REPACK: 1, DV: 1, ATMOS: 1
+};
+
+function _isIptvPrefixToken(token) {
+    var t = String(token || "").trim();
+    if (!t) return true;
+    var up = t.toUpperCase();
+    if (/^4K$/i.test(t)) return true;
+    if (/^(?:19|20)\d{2}P$/.test(up)) return true;
+    if (_IPTV_PREFIX_LANGS[up] && t === up) return true;
+    if (_IPTV_PREFIX_SERVICES[up] && t === up) return true;
+    if (_IPTV_PREFIX_QUALITY[up] && t === up) return true;
+    if (/[-/|]/.test(t)) {
+        return t.split(/[-/|]+/).every(function (part) { return _isIptvPrefixToken(part); });
+    }
+    return false;
+}
+
+function _isIptvPrefixChunk(chunk) {
+    var parts = String(chunk || "").trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return true;
+    return parts.every(_isIptvPrefixToken);
+}
+
+function _cleanMediaTitle(raw, yearHint) {
+    var title = String(raw || "").replace(/\u2013|\u2014/g, "-").replace(/\s+/g, " ").trim();
+    var year = String(yearHint || "").trim();
+    if (!title) return { title: "", year: year };
+
+    var parenYear = title.match(/\((\d{4})\)\s*$/);
+    if (parenYear) {
+        if (!year) year = parenYear[1];
+        title = title.replace(/\(\d{4}\)\s*$/, "").trim();
+    }
+
+    var trailingYear = title.match(/\s+((?:19|20)\d{2})\s*$/);
+    if (trailingYear) {
+        if (!year) year = trailingYear[1];
+        title = title.replace(/\s+(?:19|20)\d{2}\s*$/, "").trim();
+    }
+
+    title = title.replace(/^\[(?:[A-Z]{2,6})\]\s*/i, "");
+    title = title.replace(/^\((?:[A-Z]{2,6})\)\s*/i, "");
+
+    for (var i = 0; i < 8; i++) {
+        var split = title.match(/^(.+?)\s*-\s+(.+)$/);
+        if (!split) break;
+        if (_isIptvPrefixChunk(split[1])) title = split[2].trim();
+        else break;
+    }
+
+    for (var j = 0; j < 6; j++) {
+        var wordSplit = title.match(/^(\S+)\s+(.+)$/);
+        if (!wordSplit) break;
+        if (_isIptvPrefixToken(wordSplit[1])) title = wordSplit[2].trim();
+        else break;
+    }
+
+    title = title.replace(/^[-–—|:]+\s*/, "").trim();
+    return { title: title, year: year };
+}
+
+function _subtitleLabel(entry) {
+    if (!entry) return "Subtitles";
+    return entry.label || entry.release || entry.title || entry.name || entry.langLabel || "Subtitles";
+}
+
 /*
  * IPTVPlayer — simple, honest tiered playback.
  *
@@ -49,6 +167,12 @@ class IPTVPlayer {
         this._codecs   = null;
         this._res      = "";
         this._activeEngine = "";
+        this._playbackContext = null;
+        this._subtitleBrowser = { mode: "root", lang: "", items: [], busy: false, error: "" };
+        this._subtitleResults = {};
+        this._externalTrackEls = [];
+        this._osToken = "";
+        this._osTokenPromise = null;
         this.video.tabIndex = -1;   // input handled by dpad.js
         this._setupKeys();
     }
@@ -167,11 +291,487 @@ class IPTVPlayer {
     _resetVideo() {
         try { this.video.pause(); } catch (_) {}
         this.destroyHls();
+        this._clearExternalTracks();
         this.video.removeAttribute("src");
         this.video.innerHTML = "";
         try { this.video.load(); } catch (_) {}
     }
     _alive(gen, tok) { return gen === this._gen && tok === this._tok; }
+
+    _clearExternalTracks() {
+        while (this._externalTrackEls.length) {
+            var el = this._externalTrackEls.pop();
+            try { if (el && el.parentNode) el.parentNode.removeChild(el); } catch (_) {}
+            try { if (el && el.src) URL.revokeObjectURL(el.src); } catch (_) {}
+        }
+        this._setSubtitleDirection("");
+    }
+
+    _osSettings() {
+        return {
+            username: _lsGet("iptv_opensubs_username", "") || "",
+            password: _lsGet("iptv_opensubs_password", "") || "",
+            apiKey:   _lsGet("iptv_opensubs_apikey", "") || "",
+            langs:    _splitLangCodes(_lsGet("iptv_opensubs_languages", "") || ""),
+            rtl:      _lsGet("iptv_opensubs_rtl", "auto") || "auto"
+        };
+    }
+
+    _languageCatalog() {
+        return ["en", "ar", "es", "fr", "de", "it", "pt", "ru", "tr", "fa", "he", "ur", "hi", "pl", "nl", "sv", "da", "fi", "cs", "ro", "hu", "bg", "hr", "sk", "sl", "uk", "el", "sr", "ja", "ko", "zh", "vi", "th", "id", "bn"];
+    }
+
+    _subtitleQuery() {
+        var c = this._playbackContext || {};
+        var yearHint = String(c.year || "").trim();
+        if (c.type === "episode") {
+            var series = String(c.seriesTitle || c.series_name || "").trim();
+            if (!series && c.name) {
+                var parts = String(c.name).split(" · ");
+                if (parts.length > 1) series = parts[0].trim();
+            }
+            if (series) {
+                var epClean = _cleanMediaTitle(series, yearHint);
+                if (!epClean.title) return "";
+                return epClean.year ? epClean.title + " " + epClean.year : epClean.title;
+            }
+        }
+        var raw = String(c.title || c.name || c.searchTitle || "").trim();
+        var cleaned = _cleanMediaTitle(raw, yearHint);
+        if (!cleaned.title) return "";
+        return cleaned.year ? cleaned.title + " " + cleaned.year : cleaned.title;
+    }
+
+    _normalizeImdbId(value) {
+        var raw = String(value || "").trim();
+        if (!raw) return "";
+        if (/^tt\d+$/i.test(raw)) return raw.toLowerCase();
+        var digits = raw.replace(/\D/g, "");
+        return digits ? "tt" + digits : "";
+    }
+
+    _buildOpenSubtitleSearchUrl(lang) {
+        var c = this._playbackContext || {};
+        var params = [];
+        var imdbId = this._normalizeImdbId(c.imdb_id || c.imdb);
+        var tmdbId = String(c.tmdb_id || c.tmdb || "").replace(/\D/g, "");
+        var query = this._subtitleQuery();
+        var hasId = !!(imdbId || tmdbId);
+
+        if (!hasId && !query) return "";
+
+        params.push("languages=" + encodeURIComponent(lang));
+        if (imdbId) params.push("imdb_id=" + encodeURIComponent(imdbId));
+        if (tmdbId) params.push("tmdb_id=" + encodeURIComponent(tmdbId));
+
+        if (c.type === "episode") {
+            params.push("type=episode");
+            var season = c.season != null ? c.season : c.season_number;
+            var episode = c.episode != null ? c.episode : c.episode_number;
+            if (season != null && season !== "") params.push("season_number=" + encodeURIComponent(season));
+            if (episode != null && episode !== "") params.push("episode_number=" + encodeURIComponent(episode));
+        } else if (c.type === "movie") {
+            params.push("type=movie");
+        }
+
+        if (query) params.push("query=" + encodeURIComponent(query));
+        params.push("order_by=download_count");
+        params.push("order_direction=desc");
+        return "https://api.opensubtitles.com/api/v1/subtitles?" + params.join("&");
+    }
+
+    _openSubtitleApiError(data, fallback) {
+        if (data && Array.isArray(data.errors) && data.errors.length) {
+            return data.errors.map(function (e) { return e && (e.detail || e.title || e.code) || ""; }).filter(Boolean).join("; ");
+        }
+        if (data && data.message) return String(data.message);
+        return fallback || "OpenSubtitles request failed";
+    }
+
+    _mapOpenSubtitleRow(row, lang) {
+        var attrs = row && row.attributes;
+        if (!attrs) return null;
+        var files = Array.isArray(attrs.files) ? attrs.files : [];
+        var file = files[0];
+        var fileId = file && (file.file_id != null ? file.file_id : file.id);
+        if (fileId == null || fileId === "") return null;
+        var release = (file && file.file_name) || attrs.release || attrs.file_name ||
+            (attrs.feature_details && attrs.feature_details.title) || "";
+        var rowLang = String(attrs.language || lang || "").toLowerCase();
+        var downloads = attrs.download_count || 0;
+        var hi = !!(attrs.hearing_impaired || attrs.hi);
+        var label = release || (_langName(rowLang) + " subtitle");
+        if (hi) label += " (HI)";
+        if (downloads) label += " · " + downloads + " downloads";
+        return {
+            kind: "result",
+            lang: rowLang || lang,
+            label: label,
+            release: release,
+            fileId: fileId,
+            hearing: hi,
+            rating: downloads,
+            raw: row
+        };
+    }
+
+    _subtitleLangLabel(code) {
+        return _langName(code);
+    }
+
+    _subtitleRootItems() {
+        var settings = this._osSettings();
+        var preferred = settings.langs.length ? settings.langs : ["en", "ar"];
+        var ordered = [];
+        var seen = {};
+
+        function add(code) {
+            code = String(code || "").toLowerCase();
+            if (!code || seen[code]) return;
+            seen[code] = true;
+            ordered.push(code);
+        }
+
+        preferred.forEach(add);
+        this._languageCatalog().forEach(add);
+
+        var items = [{ kind: "off", label: "Off", value: "off" }];
+        var native = this._nativeSubtitleItems();
+        if (native.length) {
+            items.push({ kind: "heading", label: "Device / stream tracks" });
+            native.forEach(function (track) { items.push(track); });
+        }
+        items.push({ kind: "heading", label: "OpenSubtitles" });
+        ordered.forEach(function (code) {
+            items.push({
+                kind: "lang",
+                lang: code,
+                label: _langName(code),
+                value: code,
+                count: null
+            });
+        });
+        return items;
+    }
+
+    _nativeSubtitleItems() {
+        var items = [];
+        if (this.hls && this.hls.subtitleTracks) {
+            for (var i = 0; i < this.hls.subtitleTracks.length; i++) {
+                var t = this.hls.subtitleTracks[i];
+                items.push({ kind: "track", src: "hls", id: i, label: t.name || t.lang || ("Subtitle " + (i + 1)), track: { src: "hls", id: i, label: t.name || t.lang || ("Subtitle " + (i + 1)) } });
+            }
+        }
+        var tt = this.video.textTracks;
+        if (tt) {
+            for (var j = 0; j < tt.length; j++) {
+                var k = tt[j].kind;
+                if (k === "subtitles" || k === "captions" || k === "") {
+                    items.push({ kind: "track", src: "native", id: j, label: tt[j].label || tt[j].language || ("Track " + (j + 1)), track: { src: "native", id: j, label: tt[j].label || tt[j].language || ("Track " + (j + 1)) } });
+                }
+            }
+        }
+        return items;
+    }
+
+    setPlaybackContext(ctx) {
+        this._playbackContext = ctx || null;
+        this._subtitleBrowser = { mode: "root", lang: "", items: [], busy: false, error: "" };
+        this._subtitleResults = {};
+    }
+
+    getSubtitleMenuState() {
+        return {
+            mode: this._subtitleBrowser.mode,
+            lang: this._subtitleBrowser.lang,
+            busy: !!this._subtitleBrowser.busy,
+            error: this._subtitleBrowser.error || "",
+            items: this._subtitleBrowser.items && this._subtitleBrowser.items.length ? this._subtitleBrowser.items : this._subtitleRootItems(),
+            title: this._subtitleBrowser.mode === "lang" ? (_langName(this._subtitleBrowser.lang) + " subtitles") : "Subtitles"
+        };
+    }
+
+    openSubtitleBrowser() {
+        this._subtitleBrowser = { mode: "root", lang: "", items: this._subtitleRootItems(), busy: false, error: "" };
+        return Promise.resolve(this.getSubtitleMenuState());
+    }
+
+    openSubtitleLanguage(lang) {
+        var self = this;
+        lang = String(lang || "").toLowerCase();
+        if (!lang) return Promise.resolve(this.getSubtitleMenuState());
+        this._subtitleBrowser.mode = "lang";
+        this._subtitleBrowser.lang = lang;
+        this._subtitleBrowser.error = "";
+        this._subtitleBrowser.busy = true;
+        this._subtitleBrowser.items = [{ kind: "loading", label: "Loading subtitles…" }];
+        return this._fetchOpenSubtitleResults(lang).then(function (items) {
+            if (self._subtitleBrowser.lang !== lang) return self.getSubtitleMenuState();
+            self._subtitleBrowser.busy = false;
+            self._subtitleBrowser.items = items.length ? items : [{ kind: "empty", label: "No subtitles found" }];
+            return self.getSubtitleMenuState();
+        }).catch(function (err) {
+            if (self._subtitleBrowser.lang !== lang) return self.getSubtitleMenuState();
+            self._subtitleBrowser.busy = false;
+            self._subtitleBrowser.error = err && err.message ? err.message : "Search failed";
+            self._subtitleBrowser.items = [
+                { kind: "back", label: "← Back to languages" },
+                { kind: "error", label: self._subtitleBrowser.error }
+            ];
+            return self.getSubtitleMenuState();
+        });
+    }
+
+    closeSubtitleBrowser() {
+        this._subtitleBrowser.mode = "root";
+        this._subtitleBrowser.lang = "";
+        this._subtitleBrowser.busy = false;
+        this._subtitleBrowser.error = "";
+        this._subtitleBrowser.items = this._subtitleRootItems();
+        return Promise.resolve(this.getSubtitleMenuState());
+    }
+
+    selectSubtitleMenuItem(item) {
+        if (!item) return Promise.resolve(this.getSubtitleMenuState());
+        if (item.kind === "off") {
+            this.setSubtitle("off");
+            return Promise.resolve(this.closeSubtitleBrowser());
+        }
+        if (item.kind === "track") {
+            this.setSubtitle(item.track);
+            return Promise.resolve(this.closeSubtitleBrowser());
+        }
+        if (item.kind === "lang") {
+            return this.openSubtitleLanguage(item.lang || item.value);
+        }
+        if (item.kind === "result") {
+            return this._applyOpenSubtitleResult(item);
+        }
+        if (item.kind === "back") {
+            return this.closeSubtitleBrowser();
+        }
+        return Promise.resolve(this.getSubtitleMenuState());
+    }
+
+    _osHeaders(extra) {
+        var os = this._osSettings();
+        var headers = {
+            "Accept": "application/json",
+            "Api-Key": os.apiKey || "",
+            "User-Agent": "LG-IPTV/1.0.27"
+        };
+        if (this._osToken) headers.Authorization = "Bearer " + this._osToken;
+        if (extra) {
+            for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) headers[k] = extra[k];
+        }
+        return headers;
+    }
+
+    _ensureOpenSubToken() {
+        var self = this;
+        if (this._osToken) return Promise.resolve(this._osToken);
+        if (this._osTokenPromise) return this._osTokenPromise;
+        var os = this._osSettings();
+        if (!os.apiKey) {
+            return Promise.reject(new Error("OpenSubtitles API key is required — add it in Settings"));
+        }
+        if (!os.username || !os.password) {
+            return Promise.reject(new Error("OpenSubtitles login is required for downloads — add account in Settings"));
+        }
+        this._osTokenPromise = fetch("https://api.opensubtitles.com/api/v1/login", {
+            method: "POST",
+            headers: this._osHeaders({ "Content-Type": "application/json" }),
+            body: JSON.stringify({ username: os.username, password: os.password })
+        }).then(function (r) {
+            return r.json().then(function (data) {
+                if (!r.ok) throw new Error(self._openSubtitleApiError(data, "Login failed (HTTP " + r.status + ")"));
+                return data;
+            });
+        }).then(function (data) {
+            self._osTokenPromise = null;
+            var token = data && (data.token || data.jwt || data.access_token ||
+                (data.data && (data.data.token || data.data.access_token)));
+            if (!token) throw new Error("Login succeeded but no token was returned");
+            self._osToken = token;
+            return self._osToken;
+        }).catch(function (err) {
+            self._osTokenPromise = null;
+            self._osToken = "";
+            throw err;
+        });
+        return this._osTokenPromise;
+    }
+
+    _fetchOpenSubtitleResults(lang) {
+        var self = this;
+        lang = String(lang || "").toLowerCase();
+        if (!lang) return Promise.resolve([]);
+        var os = this._osSettings();
+        if (!os.apiKey) return Promise.reject(new Error("OpenSubtitles API key is required — add it in Settings"));
+        var searchUrl = this._buildOpenSubtitleSearchUrl(lang);
+        if (!searchUrl) return Promise.reject(new Error("No title or ID available for subtitle search"));
+        var cacheKey = searchUrl;
+        if (this._subtitleResults[cacheKey]) return Promise.resolve(this._subtitleResults[cacheKey]);
+        return this._ensureOpenSubToken().then(function () {
+            return fetch(searchUrl, { headers: self._osHeaders() });
+        }).then(function (r) {
+            return r.json().then(function (data) {
+                if (!r.ok) throw new Error(self._openSubtitleApiError(data, "Search failed (HTTP " + r.status + ")"));
+                return data;
+            });
+        }).then(function (data) {
+            var rows = Array.isArray(data && data.data) ? data.data : [];
+            var items = rows.map(function (row) { return self._mapOpenSubtitleRow(row, lang); })
+                .filter(function (item) { return !!item; });
+            items.unshift({ kind: "back", label: "← Back to languages" });
+            self._subtitleResults[cacheKey] = items;
+            return items;
+        });
+    }
+
+    _requestOpenSubtitleDownloadLink(fileId) {
+        var self = this;
+        return this._ensureOpenSubToken().then(function () {
+            return fetch("https://api.opensubtitles.com/api/v1/download", {
+                method: "POST",
+                headers: self._osHeaders({ "Content-Type": "application/json" }),
+                body: JSON.stringify({ file_id: Number(fileId) })
+            });
+        }).then(function (r) {
+            return r.json().then(function (data) {
+                if (!r.ok) throw new Error(self._openSubtitleApiError(data, "Download failed (HTTP " + r.status + ")"));
+                var link = data && data.link;
+                if (!link) throw new Error("API response is missing the download link");
+                return link;
+            });
+        });
+    }
+
+    _downloadSubtitleText(item) {
+        var self = this;
+        if (!item) return Promise.reject(new Error("No subtitle selected"));
+        if (!item.fileId) return Promise.reject(new Error("Missing subtitle file id"));
+        return this._requestOpenSubtitleDownloadLink(item.fileId).then(function (link) {
+            return fetch(link).then(function (r) {
+                if (!r.ok) throw new Error("HTTP " + r.status + " on downloading subtitle file");
+                return r.text();
+            });
+        });
+    }
+
+    _applyOpenSubtitleResult(item) {
+        var self = this;
+        var lang = String(item && item.lang || this._subtitleBrowser.lang || "").toLowerCase();
+        var fileId = item && item.fileId;
+
+        if (!fileId && item && item.raw && item.raw.attributes && item.raw.attributes.files) {
+            var f = item.raw.attributes.files[0];
+            fileId = f && (f.file_id != null ? f.file_id : f.id);
+        }
+
+        if (!fileId) {
+            this._subtitleBrowser.error = "Invalid subtitle data: missing file ID";
+            this._subtitleBrowser.items = [
+                { kind: "back", label: "← Back to languages" },
+                { kind: "error", label: this._subtitleBrowser.error }
+            ];
+            return Promise.resolve(this.getSubtitleMenuState());
+        }
+
+        this._subtitleBrowser.busy = true;
+        this._subtitleBrowser.items = [{ kind: "loading", label: "Loading subtitle…" }];
+
+        return this._requestOpenSubtitleDownloadLink(fileId).then(function (link) {
+            return fetch(link);
+        }).then(function (r) {
+            if (!r.ok) throw new Error("HTTP " + r.status + " on downloading subtitle file");
+            return r.text();
+        }).then(function (text) {
+            if (!text) throw new Error("Empty subtitle file");
+            var label = (item && item.label) || (item && item.release) || "Downloaded subtitle";
+            self._applySubtitleText(text, lang, label);
+            self._setSubtitleDirection(lang);
+            return self.closeSubtitleBrowser();
+        }).catch(function (err) {
+            self._subtitleBrowser.busy = false;
+            self._subtitleBrowser.error = err && err.message ? err.message : "Subtitle download failed";
+            self._subtitleBrowser.items = [
+                { kind: "back", label: "← Back to languages" },
+                { kind: "error", label: self._subtitleBrowser.error }
+            ];
+            return self.getSubtitleMenuState();
+        });
+    }
+
+   _applySubtitleText(text, lang, label) {
+        var vtt = /^WEBVTT/i.test(String(text || "").trim()) ? String(text) : this._srtToVtt(text);
+        
+        // 1. CLEANUP: Prevent Memory Leaks and DOM clutter
+        // Remove previously added external tracks and free up their Blob URLs
+        if (this._externalTrackEls && this._externalTrackEls.length > 0) {
+            for (var i = 0; i < this._externalTrackEls.length; i++) {
+                var oldTrack = this._externalTrackEls[i];
+                if (oldTrack.src) {
+                    URL.revokeObjectURL(oldTrack.src); // Free browser memory
+                }
+                if (oldTrack.parentNode === this.video) {
+                    this.video.removeChild(oldTrack); // Remove from DOM
+                }
+            }
+        }
+        this._externalTrackEls = []; // Reset the array
+
+        // 2. Disable existing native tracks
+        var tt = this.video.textTracks;
+        if (tt) {
+            for (var j = 0; j < tt.length; j++) tt[j].mode = "disabled";
+        }
+
+        // 3. Disable HLS.js built-in tracks
+        if (this.hls) {
+            try { 
+                this.hls.subtitleDisplay = false; 
+                this.hls.subtitleTrack = -1; 
+            } catch (_) {}
+        }
+
+        // 4. Create and configure the new track
+        var track = document.createElement("track");
+        track.kind = "subtitles";
+        track.label = label || _langName(lang) || "Subtitles";
+        if (lang) track.srclang = lang;
+        track.src = URL.createObjectURL(new Blob([vtt], { type: "text/vtt" }));
+        
+        // 5. Append to DOM and track array
+        this._externalTrackEls.push(track);
+        this.video.appendChild(track);
+
+        // 6. Activate the exact track we just created
+        // `track.track` accesses the underlying TextTrack object for the element
+        if (track.track) {
+            track.track.mode = "showing";
+        } else {
+            // Fallback for some older browsers where track.track isn't immediately available
+            tt = this.video.textTracks;
+            if (tt && tt.length > 0) {
+                tt[tt.length - 1].mode = "showing";
+            }
+        }
+
+        this._activeSub = { src: "external", id: track.label, lang: lang, label: track.label };
+    }
+
+    _setSubtitleDirection(lang) {
+        var rtlSetting = this._osSettings().rtl;
+        var forceRtl = rtlSetting === "force";
+        var autoRtl  = rtlSetting === "auto" && _isRtlLanguage(lang);
+        var on = forceRtl || autoRtl;
+        if (this.video) this.video.classList.toggle("subtitle-rtl", on);
+    }
+
+    setPlaybackContextFromMeta(meta) {
+        this.setPlaybackContext(meta || null);
+    }
 
     play(url) {
         if (!url) return;

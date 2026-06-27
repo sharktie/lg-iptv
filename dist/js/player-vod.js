@@ -50,6 +50,21 @@
   if (meta && meta.url !== url) meta = null;
   var resumeAt = meta && meta.resume > 0 ? meta.resume : 0;
   var _resumed = false;
+  if (window.player) {
+    if (typeof player.setPlaybackContext === 'function') {
+      player.setPlaybackContext(meta || {
+        title: title || '',
+        name: title || '',
+        searchTitle: title || '',
+        year: meta && meta.year ? meta.year : ''
+      });
+    } else if (typeof player.setPlaybackContextFromMeta === 'function') {
+      player.setPlaybackContextFromMeta(meta || {
+        title: title || '',
+        name: title || ''
+      });
+    }
+  }
   var titleEl = document.getElementById('player-title');
   if (titleEl) titleEl.textContent = title || '';
 
@@ -197,49 +212,85 @@
   /* ── Subtitles ───────────────────────────────────────────────────────── */
   var subsMenu = document.getElementById('subs-menu');
   var subsList = document.getElementById('subs-menu-list');
-  var subsOpen = false,
-    subsIdx = 0,
-    subsOptions = [];
+  var subsMenuTitle = document.getElementById('subs-menu-title');
+  var subsOpen = false;
+  var subsIdx = 0;
+  var subsItems = [];
+  var subsState = null;
   var activeSubLabel = 'off';
   var SUBS_PREF_KEY = 'vod_subs_pref';
-  function buildSubsOptions() {
-    var tracks = window.player && player.listSubtitles ? player.listSubtitles() : [];
-    subsOptions = [{
-      label: 'Off',
-      track: 'off'
-    }];
-    tracks.forEach(function (t) {
-      subsOptions.push({
-        label: t.label,
-        track: t
-      });
-    });
+  function isSelectableSubItem(item) {
+    return item && (item.kind === 'off' || item.kind === 'lang' || item.kind === 'track' || item.kind === 'result' || item.kind === 'back');
+  }
+  function syncSubsState(state) {
+    subsState = state || null;
+    subsItems = state && state.items ? state.items.slice() : [];
+    if (subsMenuTitle) subsMenuTitle.textContent = state && state.title || 'Subtitles';
+  }
+  function getSelectableSubItems() {
+    var out = [];
+    for (var i = 0; i < subsItems.length; i++) if (isSelectableSubItem(subsItems[i])) out.push(subsItems[i]);
+    return out;
+  }
+  function renderSubsMenu(state) {
+    syncSubsState(state || (window.player && player.getSubtitleMenuState ? player.getSubtitleMenuState() : null));
+    subsList.innerHTML = '';
+    var firstSelectable = -1;
+    for (var i = 0; i < subsItems.length; i++) {
+      var item = subsItems[i];
+      if (item && item.kind === 'heading') {
+        var heading = document.createElement('div');
+        heading.className = 'subs-heading';
+        heading.textContent = item.label || '';
+        subsList.appendChild(heading);
+        continue;
+      }
+      if (item && (item.kind === 'loading' || item.kind === 'empty' || item.kind === 'error')) {
+        var note = document.createElement('div');
+        note.className = 'subs-note';
+        note.textContent = item.label || '';
+        subsList.appendChild(note);
+        continue;
+      }
+      if (!isSelectableSubItem(item)) continue;
+      var b = document.createElement('button');
+      b.className = 'subs-opt';
+      b.textContent = item.label || 'Subtitles';
+      b.dataset.subIndex = String(i);
+      if (item.kind === 'lang' && String(item.value || '').toLowerCase() === activeSubLabel || item.kind === 'track' && String(item.label || '').toLowerCase() === activeSubLabel) {
+        b.classList.add('current');
+      }
+      b.addEventListener('click', function (idx) {
+        return function () {
+          chooseSubtitleItem(idx);
+        };
+      }(i));
+      subsList.appendChild(b);
+      if (firstSelectable === -1) firstSelectable = i;
+    }
+    if (subsIdx < 0 || subsIdx >= subsItems.length || !isSelectableSubItem(subsItems[subsIdx])) subsIdx = firstSelectable >= 0 ? firstSelectable : 0;
+    paintSubs();
   }
   function openSubs() {
-    buildSubsOptions();
-    subsList.innerHTML = '';
-    subsOptions.forEach(function (opt, i) {
-      var b = document.createElement('button');
-      b.className = 'subs-opt' + (opt.label.toLowerCase() === activeSubLabel ? ' current' : '');
-      b.textContent = opt.label;
-      b.addEventListener('click', function () {
-        subsIdx = i;
-        applySubs();
-      });
-      subsList.appendChild(b);
-    });
-    subsIdx = 0;
-    for (var i = 0; i < subsOptions.length; i++) {
-      if (subsOptions[i].label.toLowerCase() === activeSubLabel) {
-        subsIdx = i;
-        break;
-      }
-    }
-    if (osd) osd.classList.remove('osd-hidden'); // keep OSD visible behind the menu
+    if (osd) osd.classList.remove('osd-hidden');
     subsMenu.hidden = false;
     subsOpen = true;
-    paintSubs();
-    clearTimeout(osdTimer); // keep OSD up while choosing
+    clearTimeout(osdTimer);
+    if (window.player && player.openSubtitleBrowser) {
+      player.openSubtitleBrowser().then(function (state) {
+        renderSubsMenu(state);
+      });
+    } else if (window.player && player.getSubtitleMenuState) {
+      renderSubsMenu(player.getSubtitleMenuState());
+    } else {
+      renderSubsMenu({
+        title: 'Subtitles',
+        items: [{
+          kind: 'off',
+          label: 'Off'
+        }]
+      });
+    }
   }
   function closeSubs() {
     subsMenu.hidden = true;
@@ -249,20 +300,66 @@
   }
   function paintSubs() {
     var opts = subsList.querySelectorAll('.subs-opt');
-    for (var i = 0; i < opts.length; i++) opts[i].classList.toggle('tv-focus-visible', i === subsIdx);
-  }
-  function applySubs() {
-    var opt = subsOptions[subsIdx];
-    if (!opt) {
-      closeSubs();
-      return;
+    for (var i = 0; i < opts.length; i++) {
+      opts[i].classList.toggle('tv-focus-visible', String(opts[i].dataset.subIndex) === String(subsIdx));
     }
-    if (window.player && player.setSubtitle) player.setSubtitle(opt.track);
-    activeSubLabel = (opt.label || 'off').toLowerCase();
-    try {
-      localStorage.setItem(SUBS_PREF_KEY, activeSubLabel);
-    } catch (e) {}
-    closeSubs();
+  }
+  function chooseSubtitleItem(idx) {
+    var item = subsItems[idx];
+    if (!item) return;
+    if (item.kind === 'result') {
+      activeSubLabel = String(item.label || '').toLowerCase();
+      try {
+        localStorage.setItem(SUBS_PREF_KEY, activeSubLabel);
+      } catch (e) {}
+    }
+    if (window.player && player.selectSubtitleMenuItem) {
+      var out = player.selectSubtitleMenuItem(item);
+      if (out && typeof out.then === 'function') {
+        out.then(function (state) {
+          if (item.kind === 'lang' || item.kind === 'back') {
+            renderSubsMenu(state);
+          } else if (item.kind === 'result' || item.kind === 'track' || item.kind === 'off') {
+            closeSubs();
+          } else if (state && state.items) {
+            renderSubsMenu(state);
+          } else {
+            closeSubs();
+          }
+        }).catch(function () {
+          closeSubs();
+        });
+      } else {
+        closeSubs();
+      }
+    }
+  }
+  function moveSubFocus(dir) {
+    var selectable = getSelectableSubItems();
+    if (!selectable.length) return;
+    var current = subsItems[subsIdx];
+    var pos = -1;
+    for (var i = 0; i < selectable.length; i++) {
+      if (selectable[i] === current) {
+        pos = i;
+        break;
+      }
+    }
+    if (pos < 0) pos = 0;
+    pos += dir;
+    if (pos < 0) pos = 0;
+    if (pos >= selectable.length) pos = selectable.length - 1;
+    var target = selectable[pos];
+    for (var j = 0; j < subsItems.length; j++) {
+      if (subsItems[j] === target) {
+        subsIdx = j;
+        break;
+      }
+    }
+    paintSubs();
+  }
+  function isRootSubtitleState() {
+    return !subsState || subsState.mode === 'root';
   }
   function goBack() {
     try {
@@ -356,20 +453,22 @@
     if (subsOpen) {
       e.preventDefault();
       if (kc === KEY.UP) {
-        if (subsIdx > 0) {
-          subsIdx--;
-          paintSubs();
-        }
+        moveSubFocus(-1);
       } else if (kc === KEY.DOWN) {
-        if (subsIdx < subsOptions.length - 1) {
-          subsIdx++;
-          paintSubs();
-        }
+        moveSubFocus(1);
       } else if (kc === KEY.ENTER) {
-        applySubs();
+        chooseSubtitleItem(subsIdx);
+      } else if (kc === KEY.LEFT || kc === KEY.BACK || kc === KEY.ESC) {
+        if (!isRootSubtitleState() && window.player && player.closeSubtitleBrowser) {
+          player.closeSubtitleBrowser().then(function (state) {
+            renderSubsMenu(state);
+          });
+        } else {
+          closeSubs();
+        }
       } else {
         closeSubs();
-      } // BACK / LEFT / RIGHT / etc.
+      }
       return;
     }
     if (kc === KEY.BACK || kc === KEY.ESC) {
@@ -455,11 +554,13 @@
   } catch (e) {}
   if (activeSubLabel && activeSubLabel !== 'off') {
     setTimeout(function () {
-      buildSubsOptions();
-      for (var i = 0; i < subsOptions.length; i++) {
-        if (subsOptions[i].label.toLowerCase() === activeSubLabel) {
-          if (window.player && player.setSubtitle) player.setSubtitle(subsOptions[i].track);
-          break;
+      if (window.player && player.listSubtitles) {
+        var tracks = player.listSubtitles();
+        for (var i = 0; i < tracks.length; i++) {
+          if ((tracks[i].label || '').toLowerCase() === activeSubLabel && player.setSubtitle) {
+            player.setSubtitle(tracks[i]);
+            break;
+          }
         }
       }
     }, 2500);

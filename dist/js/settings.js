@@ -19,6 +19,15 @@
       localStorage.setItem(key, JSON.stringify(val));
     } catch (e) {}
   }
+  function loadOpenSubsSettings() {
+    return {
+      username: load('iptv_opensubs_username', ''),
+      password: load('iptv_opensubs_password', ''),
+      apiKey: load('iptv_opensubs_apikey', ''),
+      languages: load('iptv_opensubs_languages', ''),
+      rtl: load('iptv_opensubs_rtl', 'auto')
+    };
+  }
 
   /* ── Status helper ─────────────────────────────────────────────────────── */
   var _statusTimers = {};
@@ -505,7 +514,25 @@
     }
     save('iptv_custom_epg_url', url);
     save('iptv_custom_epg_match', match);
-    setStatus('epg-load-status', 'EPG settings saved.', 'ok', 3000);
+    setStatus('epg-load-status', 'Settings saved.', 'ok', 3000);
+  });
+
+  /* ── SUBS panel ─────────────────────────────────────────────────────────── */
+  (function populateSubs() {
+    var os = loadOpenSubsSettings();
+    document.getElementById('cfg-opensubs-username').value = os.username || 'inawi';
+    document.getElementById('cfg-opensubs-password').value = os.password || 'jvcRg8AWpsfS5Lp';
+    document.getElementById('cfg-opensubs-apikey').value = os.apiKey || 'L0DkY5yY9rn8sAIm6cuZ9edqYGgwnRug';
+    document.getElementById('cfg-opensubs-languages').value = os.languages || 'ar';
+    document.getElementById('cfg-opensubs-rtl').value = os.rtl || 'auto';
+  })();
+  document.getElementById('cfg-opensubs-load-btn').addEventListener('click', function () {
+    save('iptv_opensubs_username', document.getElementById('cfg-opensubs-username').value.trim());
+    save('iptv_opensubs_password', document.getElementById('cfg-opensubs-password').value);
+    save('iptv_opensubs_apikey', document.getElementById('cfg-opensubs-apikey').value.trim());
+    save('iptv_opensubs_languages', document.getElementById('cfg-opensubs-languages').value.trim());
+    save('iptv_opensubs_rtl', document.getElementById('cfg-opensubs-rtl').value);
+    setStatus('subs-load-status', 'Settings saved.', 'ok', 3000);
   });
 
   /* ── Live TV category hide panel ───────────────────────────────────────── */
