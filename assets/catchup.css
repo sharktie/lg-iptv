@@ -1,0 +1,221 @@
+/* ── Catch-up page ───────────────────────────────────────────────────────────── */
+#cu-app { display: flex; height: 100vh; width: 100vw; overflow: hidden; }
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────────── */
+#cu-sidebar {
+    width: var(--sidebar-w); min-width: var(--sidebar-w);
+    display: flex; flex-direction: column;
+    background: var(--bg2); border-right: var(--border);
+    overflow: hidden; z-index: 10;
+}
+#cu-sidebar-header { padding: 24px 18px 18px; border-bottom: var(--border); flex-shrink: 0; }
+#cu-brand {
+    font-size: 28px; font-weight: 700; color: var(--accent);
+    margin-bottom: 18px; display: flex; align-items: center; gap: 14px;
+}
+#cu-brand span { color: var(--text); }
+
+#cu-home-btn, #cu-settings-btn {
+    width: 46px; height: 46px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg4); border: var(--border);
+    color: var(--text-dim); cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.15s;
+}
+#cu-home-btn     { border-radius: 50%; }
+#cu-settings-btn { border-radius: 10px; background: var(--bg3); margin-left: auto; }
+#cu-home-btn svg, #cu-settings-btn svg { width: 20px; height: 20px; display: block; }
+#cu-home-btn:hover, #cu-home-btn.tv-focus-visible,
+#cu-settings-btn:hover, #cu-settings-btn.tv-focus-visible {
+    background: var(--accent); border-color: var(--accent); color: #fff; transform: scale(1.08);
+}
+#cu-home-btn.tv-focus-visible, #cu-settings-btn.tv-focus-visible { box-shadow: 0 0 0 3px var(--accent-dim); }
+
+#cu-search {
+    width: 100%; padding: 15px 16px;
+    background: var(--bg3); border: var(--border);
+    border-radius: var(--radius); color: var(--text);
+    font-size: 19px; outline: none;
+}
+#cu-search:focus, #cu-search.tv-focus-visible { border-color: var(--accent); }
+#cu-search::placeholder { color: var(--text-dim); }
+#cu-status { margin-top: 10px; font-size: 17px; color: var(--text-faint); }
+
+/* ── Sidebar nav (accordion) ─────────────────────────────────────────────────── */
+#cu-nav-wrap {
+    flex: 1; overflow-y: auto; overflow-x: hidden; padding: 8px;
+    scrollbar-width: thin; scrollbar-color: var(--bg4) transparent;
+}
+#cu-nav-wrap::-webkit-scrollbar { width: 6px; }
+#cu-nav-wrap::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 4px; }
+#cu-nav { display: flex; flex-direction: column; gap: 4px; }
+
+/* Continue Watching shortcut */
+.cu-cw-nav {
+    width: 100%; display: flex; align-items: center; gap: 10px;
+    padding: 16px; background: var(--bg3); border: 1px solid transparent;
+    border-radius: 8px; color: var(--text); font-size: 19px; font-weight: 600;
+    cursor: pointer; text-align: left;
+}
+.cu-cw-ico { color: var(--accent); font-size: 16px; }
+.cu-cw-nav.active { background: rgba(229,0,30,0.12); border-color: var(--accent-dim); }
+.cu-cw-nav:hover { background: var(--bg4); }
+.cu-cw-nav.tv-focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* Sections */
+.cu-section { display: flex; flex-direction: column; }
+.cu-section-hdr {
+    width: 100%; display: flex; align-items: center; gap: 8px;
+    padding: 16px; background: transparent; border: 1px solid transparent;
+    border-radius: 8px; color: var(--text-dim); font-size: 19px; cursor: pointer; text-align: left;
+}
+.cu-section-hdr:hover { background: var(--bg3); color: var(--text); }
+.cu-section-hdr.tv-focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; color: var(--text); }
+.cu-sec-chev { font-size: 15px; flex-shrink: 0; transition: transform 0.2s ease; }
+.cu-section.open .cu-sec-chev { transform: rotate(180deg); }
+.cu-sec-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cu-sec-count {
+    flex-shrink: 0; font-size: 13px; font-weight: 700; color: var(--text-faint);
+    background: var(--bg4); border-radius: 999px; padding: 3px 9px;
+}
+.cu-section-list { display: none; flex-direction: column; padding-left: 8px; }
+.cu-section.open .cu-section-list { display: flex; }
+.cu-search-list { display: flex; flex-direction: column; }
+
+/* Channel row */
+.cu-ch-row {
+    display: flex; align-items: center;
+    height: 70px; min-height: 70px;
+    padding: 0 10px; border-radius: 8px; cursor: pointer;
+    transition: background 0.12s;
+}
+.cu-ch-row:hover            { background: var(--bg3); }
+.cu-ch-row.selected         { background: rgba(229,0,30,0.1); }
+.cu-ch-row.selected .cu-ch-name { color: var(--accent); }
+.cu-ch-row.tv-focus-visible { outline: 3px solid var(--accent) !important; outline-offset: -3px; background: var(--bg3); }
+.cu-ch-row.cu-row-active    { background: var(--bg3); }
+
+.cu-ch-logo { width: 46px; height: 46px; flex-shrink: 0; margin-right: 12px; display: flex; align-items: center; justify-content: center; }
+.cu-ch-logo img { width: 46px; height: 46px; object-fit: contain; display: block; border-radius: 8px; }
+.cu-ch-logo-fallback {
+    width: 46px; height: 46px; display: flex; align-items: center; justify-content: center;
+    font-size: 19px; font-weight: 700; color: var(--accent);
+    background: var(--bg4); border-radius: 8px; border: 1px solid var(--bg5);
+}
+.cu-ch-name { flex: 1; min-width: 0; font-size: 18px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cu-ch-badge {
+    flex-shrink: 0; margin-left: 10px; font-size: 12px; font-weight: 700; color: var(--text-dim);
+    background: var(--bg4); border: 1px solid var(--bg5); border-radius: 999px; padding: 3px 9px;
+}
+.cu-fav-btn {
+    flex-shrink: 0; margin-left: 8px; width: 40px; height: 40px;
+    background: none; border: 1.5px solid transparent; border-radius: 10px;
+    color: var(--text-faint); font-size: 20px; line-height: 1; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: color 0.13s, background 0.13s, border-color 0.13s;
+}
+.cu-fav-btn:hover  { color: var(--gold); background: rgba(197,153,10,0.12); }
+.cu-fav-btn.active { color: var(--gold); }
+.cu-fav-btn.tv-focus-visible {
+    color: var(--gold); border-color: var(--gold); background: rgba(197,153,10,0.18);
+    box-shadow: 0 0 0 2px rgba(197,153,10,0.35);
+}
+.cu-ch-empty { padding: 30px 14px; text-align: center; color: var(--text-dim); font-size: 18px; }
+
+/* ── Main area ───────────────────────────────────────────────────────────────── */
+#cu-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); min-width: 0; }
+#cu-main-header { padding: 28px 32px 20px; border-bottom: var(--border); background: var(--bg2); flex-shrink: 0; }
+#cu-main-title { font-size: 30px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#cu-main-sub { margin-top: 6px; font-size: 18px; color: var(--text-dim); }
+#cu-content { flex: 1; position: relative; overflow: hidden; display: flex; flex-direction: column; }
+
+/* ── Continue Watching cards ─────────────────────────────────────────────────── */
+#cu-cw {
+    flex: 1; overflow-y: auto; overflow-x: hidden; padding: 20px 24px;
+    display: flex; flex-direction: column; gap: 12px;
+    scrollbar-width: thin; scrollbar-color: var(--bg4) transparent;
+}
+#cu-cw::-webkit-scrollbar { width: 6px; }
+#cu-cw::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 4px; }
+.cu-cw-card {
+    display: flex; align-items: center; gap: 16px;
+    padding: 14px 18px; background: var(--bg2); border: var(--border);
+    border-radius: 12px; cursor: pointer; transition: background 0.12s, border-color 0.12s;
+}
+.cu-cw-card:hover { background: var(--bg3); }
+.cu-cw-card.tv-focus-visible { outline: 3px solid var(--accent) !important; outline-offset: 2px; background: var(--bg3); }
+.cu-cw-card.cu-row-active { background: var(--bg3); }
+.cu-cw-card.cu-cw-empty { opacity: 0.6; }
+.cu-cw-logo { width: 64px; height: 64px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--bg4); border-radius: 10px; overflow: hidden; }
+.cu-cw-logo img { width: 64px; height: 64px; object-fit: contain; }
+.cu-cw-body { flex: 1; min-width: 0; }
+.cu-cw-title { font-size: 21px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cu-cw-channel { font-size: 16px; color: var(--text-dim); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cu-cw-when { font-size: 16px; color: var(--accent); margin-top: 5px; }
+.cu-cw-play { flex-shrink: 0; font-size: 20px; color: var(--accent); }
+.cu-cw-unpin {
+    flex-shrink: 0; width: 44px; height: 44px;
+    background: none; border: 1.5px solid transparent; border-radius: 10px;
+    color: var(--gold); font-size: 22px; line-height: 1; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+}
+.cu-cw-unpin:hover { background: rgba(197,153,10,0.12); }
+.cu-cw-unpin.tv-focus-visible { border-color: var(--gold); background: rgba(197,153,10,0.18); box-shadow: 0 0 0 2px rgba(197,153,10,0.35); }
+
+/* ── Day tabs ────────────────────────────────────────────────────────────────── */
+#cu-archive { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+#cu-day-tabs {
+    display: flex; flex-wrap: nowrap; overflow-x: auto; flex-shrink: 0;
+    padding: 14px 24px; border-bottom: var(--border); background: var(--bg2);
+    scrollbar-width: thin; scrollbar-color: var(--bg4) transparent;
+}
+#cu-day-tabs::-webkit-scrollbar { height: 5px; }
+#cu-day-tabs::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
+.cu-day-tab {
+    flex-shrink: 0; margin-right: 10px;
+    background: var(--bg4); border: var(--border); border-radius: 999px;
+    color: var(--text-dim); font-size: 17px; font-weight: 600;
+    padding: 11px 22px; cursor: pointer; white-space: nowrap;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.cu-day-tab:hover  { background: var(--bg5); color: var(--text); }
+.cu-day-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.cu-day-tab.tv-focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; color: var(--text); }
+
+/* ── Programme list ──────────────────────────────────────────────────────────── */
+#cu-programme-list {
+    flex: 1; overflow-y: auto; overflow-x: hidden;
+    display: flex; flex-direction: column; padding: 8px 0;
+    scrollbar-width: thin; scrollbar-color: var(--bg4) transparent;
+}
+#cu-programme-list::-webkit-scrollbar { width: 6px; }
+#cu-programme-list::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 4px; }
+.cu-prog-row {
+    display: flex; align-items: center; width: 100%;
+    padding: 16px 32px; border-bottom: var(--border); cursor: pointer; transition: background 0.12s;
+}
+.cu-prog-row:hover            { background: var(--bg2); }
+.cu-prog-row.tv-focus-visible { outline: 3px solid var(--accent) !important; outline-offset: -3px; background: var(--bg2); }
+.cu-prog-row.cu-row-active    { background: var(--bg2); }
+.cu-prog-time { flex-shrink: 0; width: 170px; font-size: 17px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.cu-prog-title { flex: 1; min-width: 0; font-size: 20px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cu-prog-pin {
+    flex-shrink: 0; margin: 0 14px; width: 44px; height: 44px;
+    background: none; border: 1.5px solid transparent; border-radius: 10px;
+    color: var(--text-faint); font-size: 20px; line-height: 1; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: color 0.13s, background 0.13s, border-color 0.13s;
+}
+.cu-prog-pin:hover  { color: var(--gold); background: rgba(197,153,10,0.12); }
+.cu-prog-pin.active { color: var(--gold); }
+.cu-prog-pin.tv-focus-visible { color: var(--gold); border-color: var(--gold); background: rgba(197,153,10,0.18); box-shadow: 0 0 0 2px rgba(197,153,10,0.35); }
+.cu-prog-play { flex-shrink: 0; font-size: 18px; color: var(--accent); }
+
+/* ── Placeholder ─────────────────────────────────────────────────────────────── */
+#cu-placeholder {
+    position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 0 40px; pointer-events: none;
+}
+#cu-placeholder-icon { font-size: 72px; line-height: 1; opacity: 0.45; margin-bottom: 18px; }
+#cu-placeholder-text { font-size: 22px; color: var(--text-dim); max-width: 560px; line-height: 1.45; }

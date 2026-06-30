@@ -17,6 +17,23 @@
 #pip-wrap:fullscreen           { width: 100vw; height: 100vh; border-radius: 0; border: none; outline: none; }
 #pip-wrap.pip-fullscreen-active { width: 100vw; height: 100vh; border-radius: 0; border: none; outline: none; }
 
+/* CSS fullscreen fallback — toggled on by app.js (body.fs-fallback) ONLY when it
+   measures that native fullscreen didn't actually fill the screen (e.g. webOS
+   5.40). The GUI is hidden and the player is stretched over the viewport. It is
+   never set when native fullscreen works, so other devices/simulators are
+   unaffected and playback is never disturbed. */
+body.fs-fallback #sidebar,
+body.fs-fallback #tl-header-bar,
+body.fs-fallback #channel-list-wrap,
+body.fs-fallback #preview-info { display: none !important; }
+body.fs-fallback #preview-bar { padding: 0; height: 100vh; }
+body.fs-fallback #pip-wrap {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    width: 100vw; height: 100vh; z-index: 9999;
+    border: none; border-radius: 0;
+    -webkit-transform: none; transform: none;
+}
+
 #player { width: 100%; height: 100%; display: block; object-fit: contain; }
 
 #player-msg {
@@ -64,6 +81,13 @@
 }
 .subs-opt.current::after { content: " ✓"; color: var(--accent, #3b82f6); }
 .subs-opt.tv-focus-visible { background: rgba(255,255,255,0.16); outline: none; }
+.subs-opt.subs-sep { margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.12); padding-top: 16px; }
+
+/* ── Subtitle cue rendering + size ────────────────────────────────────── */
+#player::cue { background: rgba(0,0,0,0.55); color: #fff; line-height: 1.3; }
+#player.subs-md::cue { font-size: 100%; }
+#player.subs-lg::cue { font-size: 138%; }
+#player.subs-xl::cue { font-size: 178%; }
 
 /* ══════════════════════════════════════════════════════════════════════
    LIVE TV — PiP bar (channel name + fullscreen button)
@@ -149,7 +173,8 @@
     transition: width 0.5s linear;
 }
 
-#pip-wrap.pip-fullscreen-active #fs-osd { font-size: clamp(12px, 1.8vw, 22px); }
+/* Fixed size, not clamp() — clamp() is Chromium 79+ and is dropped on webOS 5.40. */
+#pip-wrap.pip-fullscreen-active #fs-osd { font-size: 20px; }
 
 /* ── Stream quality + channel number badges (top-right of OSD) ──── */
 #fs-osd-top {

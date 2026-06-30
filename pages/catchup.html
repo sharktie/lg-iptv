@@ -3,35 +3,61 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>IPTV Player</title>
+    <title>Catch-up — IPTV Player</title>
     <meta name="theme-color" content="#0c0c0e" />
     <link rel="stylesheet" href="../assets/base.css" />
-    <link rel="stylesheet" href="../assets/comingsoon.css" />
+    <link rel="stylesheet" href="../assets/catchup.css" />
 </head>
 <body>
-    <div id="coming-soon">
-        <button id="back-btn" tabindex="-1">← Back</button>
-        <div id="cs-content">
-            <div id="cs-icon"></div>
-            <div id="cs-title"></div>
-            <div id="cs-sub">Coming soon</div>
-        </div>
+    <div id="cu-app">
+        <aside id="cu-sidebar">
+            <div id="cu-sidebar-header">
+                <div id="cu-brand">
+                    <button id="cu-home-btn" title="Home">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 9.5L12 3l9 6.5V21a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9.5z"/>
+                            <polyline points="9 22 9 12 15 12 15 22"/>
+                        </svg>
+                    </button>
+                    <span>Catch-up</span>
+                    <button id="cu-settings-btn" title="Settings">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="3"/>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                        </svg>
+                    </button>
+                </div>
+                <input id="cu-search" type="text" placeholder="Search channels…" autocomplete="off" spellcheck="false" />
+                <div id="cu-status">Loading…</div>
+            </div>
+            <div id="cu-nav-wrap">
+                <div id="cu-nav"></div>
+            </div>
+        </aside>
+
+        <main id="cu-main">
+            <div id="cu-main-header">
+                <div id="cu-main-title">Continue Watching</div>
+                <div id="cu-main-sub"></div>
+            </div>
+            <div id="cu-content">
+                <div id="cu-cw"></div>
+                <div id="cu-archive" hidden>
+                    <div id="cu-day-tabs"></div>
+                    <div id="cu-programme-list"></div>
+                </div>
+                <div id="cu-placeholder">
+                    <div id="cu-placeholder-icon">⏮</div>
+                    <div id="cu-placeholder-text">Pick a channel on the left to browse past programmes.</div>
+                </div>
+            </div>
+        </main>
     </div>
-    <!-- Inline script kept ES5 (not Babel-transpiled) for old-WebOS compat. -->
-    <script>
-        var meta = {
-            vod:      { icon: "🎬", title: "VOD" },
-            catchup:  { icon: "⏮",  title: "Catch-up" },
-            settings: { icon: "⚙",  title: "Settings" }
-        };
-        var page = "catchup";
-        document.getElementById("cs-icon").textContent  = meta[page].icon;
-        document.getElementById("cs-title").textContent = meta[page].title;
-        document.getElementById("back-btn").addEventListener("click", function () { history.back(); });
-        window.addEventListener("keydown", function (e) {
-            if (e.keyCode === 461 || e.keyCode === 8) { e.preventDefault(); history.back(); }
-        });
-        document.getElementById("back-btn").classList.add("tv-focus-visible");
-    </script>
+
+    <script src="../dist/js/polyfills.js"></script>
+    <script src="../dist/js/iptv-core.js"></script>
+    <script src="../config/config.js"></script>
+    <script src="../dist/api/xtream.js"></script>
+    <script src="../dist/js/catchup.js"></script>
 </body>
 </html>

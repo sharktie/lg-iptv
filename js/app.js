@@ -523,26 +523,79 @@ function setupPip() {
     document.getElementById("pip-wrap").appendChild(osd);
 }
 
-function toggleFullscreen() {
-    const pip  = document.getElementById("pip-wrap");
-    const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
-    if (!isFs) {
-        const req = pip.requestFullscreen || pip.webkitRequestFullscreen;
-        if (req) req.call(pip);
-    } else {
-        const ex = document.exitFullscreen || document.webkitExitFullscreen;
-        if (ex) ex.call(document);
-    }
+// Fullscreen uses the native Fullscreen API as the primary path — it drives the
+// TV's hardware video plane correctly on devices and the simulators. We track
+// our own state (_fsActive) so Back always knows it's fullscreen (some webOS
+// versions, e.g. 5.40, don't report document.fullscreenElement). On those builds
+// native fullscreen also silently fails to fill the screen, so a short moment
+// after requesting it we MEASURE whether the player actually covered the
+// viewport; only if it did NOT do we switch on a CSS fallback (body.fs-fallback)
+// that hides the GUI and stretches the player. Using geometry — plus the native
+// flag when present — means the fallback can't misfire on devices/simulators
+// where native fullscreen works, so playback there is never disturbed.
+let _fsActive = false;
+let _fsCheckTimer = null;
+
+function isFullscreen() {
+    return _fsActive || !!(document.fullscreenElement || document.webkitFullscreenElement);
 }
 
+function toggleFullscreen() {
+    const pip = document.getElementById("pip-wrap");
+    if (!pip) return;
+    if (!isFullscreen()) _enterFullscreen(pip); else _exitFullscreen(pip);
+}
+
+function _enterFullscreen(pip) {
+    _fsActive = true;
+    const btn = document.getElementById("pip-fullscreen-btn");
+    if (btn) btn.title = "Exit fullscreen";
+    const req = pip.requestFullscreen || pip.webkitRequestFullscreen;
+    if (req) { try { const rp = req.call(pip); if (rp && rp.catch) rp.catch(function () {}); } catch (e) {} }
+    if (currentChannel) showOSD();
+    clearTimeout(_fsCheckTimer);
+    _fsCheckTimer = setTimeout(_checkFsCoverage, 350);
+}
+
+// Did the player actually fill the screen? If native fullscreen is reported, or
+// the element measures as covering the viewport, we're good — no fallback. Only
+// when neither holds (native fullscreen silently didn't engage) do we apply the
+// CSS fallback. Measured BEFORE adding the sizing class so the reading is real.
+function _checkFsCoverage() {
+    if (!_fsActive) return;
+    const pip = document.getElementById("pip-wrap");
+    if (!pip) return;
+    const nativeActive = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    const r = pip.getBoundingClientRect();
+    const geomCovers = r.width >= window.innerWidth - 8 && r.height >= window.innerHeight - 8;
+    pip.classList.add("pip-fullscreen-active");
+    document.body.classList.toggle("fs-fallback", !(nativeActive || geomCovers));
+    if (currentChannel) showOSD();
+}
+
+function _exitFullscreen(pip) {
+    _fsActive = false;
+    clearTimeout(_fsCheckTimer);
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+        const ex = document.exitFullscreen || document.webkitExitFullscreen;
+        if (ex) { try { ex.call(document); } catch (e) {} }
+    }
+    if (pip) pip.classList.remove("pip-fullscreen-active");
+    document.body.classList.remove("fs-fallback");
+    const btn = document.getElementById("pip-fullscreen-btn");
+    if (btn) btn.title = "Fullscreen";
+    setTVZone("channel-list");
+}
+
+// Keep state/UI in sync with the platform; if native fullscreen does engage
+// (even late), drop any CSS fallback so the two never fight.
 function onFullscreenChange() {
-    const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
-    document.getElementById("pip-fullscreen-btn").title = isFs ? "Exit fullscreen" : "Fullscreen";
-    document.getElementById("pip-wrap").classList.toggle("pip-fullscreen-active", isFs);
-    if (isFs) {
+    const native = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    if (native) {
+        document.body.classList.remove("fs-fallback");
         if (currentChannel) showOSD();
-    } else {
-        setTVZone("channel-list");
+    } else if (_fsActive) {
+        _exitFullscreen(document.getElementById("pip-wrap"));
     }
 }
 
@@ -1008,7 +1061,7 @@ async function selectChannel(ch) {
 }
 
 function updateOSDIfFullscreen() {
-    if (!!(document.fullscreenElement || document.webkitFullscreenElement)) showOSD();
+    if (isFullscreen()) showOSD();
 }
 
 function setEPG(slot, title, time, desc) {
@@ -1168,29 +1221,12 @@ function mergeXMLTVIntoEpgCache() {
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 
 window.onload = function () {
-    // ── Load active profile into IPTV_CONFIG ──────────────────────────────────
-    // Prefer the profiles system; fall back to legacy iptv_custom_config.
+    // ── Load active Xtream profile into IPTV_CONFIG (shared resolver) ──────────
+    // M3U profiles are handled separately via iptv_m3u_config / iptv_source_type.
     (function loadActiveProfile() {
         try {
-            const profiles = load("iptv_profiles", null);
-            if (profiles && profiles.length) {
-                const activeId = load("iptv_active_profile", null);
-                const profile  = (activeId && profiles.find(p => p.id === activeId)) || profiles[0];
-                if (profile) {
-                    const resolvedUrl = load("iptv_active_resolved_url", null);
-                    const urls        = Array.isArray(profile.server_urls) ? profile.server_urls : [];
-                    window.IPTV_CONFIG = {
-                        server_url:  resolvedUrl || urls[0] || "",
-                        server_urls: urls,
-                        username:    profile.username || "",
-                        password:    profile.password || "",
-                    };
-                    return;
-                }
-            }
-            // Legacy fallback
-            const savedCfg = load("iptv_custom_config", null);
-            if (savedCfg && savedCfg.server_url) window.IPTV_CONFIG = savedCfg;
+            const cfg = (typeof IPTVCore !== "undefined") && IPTVCore.resolveConfig();
+            if (cfg && cfg.type !== "m3u" && cfg.server_url) window.IPTV_CONFIG = cfg;
         } catch (_) {}
     }());
 
@@ -1198,6 +1234,7 @@ window.onload = function () {
 
     initVirtualScroll();
     initTVNavigation();
+    if (typeof tvSetBackUrl === "function") tvSetBackUrl("../index.html");
     initApp();
 
     if (load("iptv_custom_epg_url", "")) {

@@ -204,6 +204,9 @@ body {
     overflow-x: auto;
     overflow-y: hidden;
     padding: 10px 40px 18px;     /* room for focus scale + shadow */
+    /* Reserve the row height so a recycled (emptied) rail keeps its size and the
+       page doesn't jump when cards are removed/re-added on scroll. */
+    min-height: calc(var(--vod-card-h) + 60px);
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
 }
@@ -457,7 +460,17 @@ body {
     font-weight: 600;
 }
 
-#vod-detail-actions { margin: 30px 0 6px; }
+#vod-detail-actions {
+    margin: 30px 0 6px;
+    display: -webkit-box; display: flex;
+    -webkit-box-align: center; align-items: center;
+}
+#vod-detail-actions .vod-btn { margin-right: 14px; }
+.vod-btn-secondary {
+    background: var(--vod-surface-2);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.14);
+}
 .vod-btn {
     display: -webkit-box; display: flex;
     -webkit-box-align: center; align-items: center;

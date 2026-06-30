@@ -113,7 +113,7 @@ function onTVKeyDown(e) {
     }
     return;
   }
-  var isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  var isFs = typeof isFullscreen === "function" ? isFullscreen() : false;
   switch (kc) {
     case _KEY.UP:
     case _KEY.DOWN:

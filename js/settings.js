@@ -707,6 +707,78 @@
         setStatus('cfg-clear-epg-status', 'EPG cache cleared.', 'ok', 3000);
     });
 
+    /* ── Updates panel (replaces the old auto-updater modal) ───────────────── */
+    var UPD_MANIFEST   = 'https://github.com/sharktie/lg-iptv/releases/latest/download/manifest.json';
+    var UPD_FALLBACK   = 'https://raw.githubusercontent.com/sharktie/lg-iptv/main/manifest.json';
+    var UPD_APP_ID     = 'com.sharktie.iptv';
+    var _localVer = null, _pendingIpk = null;
+
+    function updFetch(url) {
+        var ctrl = new AbortController();
+        var tid  = setTimeout(function () { ctrl.abort(); }, 12000);
+        return fetch(url, { signal: ctrl.signal, cache: 'no-store' })
+            .then(function (r) { clearTimeout(tid); if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .catch(function (e) { clearTimeout(tid); throw e; });
+    }
+    function updLocalVersion() { return updFetch('../appinfo.json').then(function (d) { return d.version; }); }
+    function updRemoteManifest() {
+        return updFetch(UPD_MANIFEST + '?t=' + Date.now())
+            .catch(function () { return updFetch(UPD_FALLBACK + '?t=' + Date.now()); });
+    }
+    function updCmp(a, b) {
+        var x = String(a).split('.'), y = String(b).split('.');
+        for (var i = 0; i < Math.max(x.length, y.length); i++) {
+            var d = (parseInt(x[i], 10) || 0) - (parseInt(y[i], 10) || 0);
+            if (d !== 0) return d > 0 ? 1 : -1;
+        }
+        return 0;
+    }
+    function updSetCurrent(v) { _localVer = v; var el = document.getElementById('upd-current'); if (el) el.textContent = 'v' + v; }
+
+    updLocalVersion().then(updSetCurrent).catch(function () { var el = document.getElementById('upd-current'); if (el) el.textContent = 'unknown'; });
+
+    document.getElementById('upd-check-btn').addEventListener('click', function () {
+        setStatus('upd-status', 'Checking for updates…', '');
+        document.getElementById('upd-available').style.display = 'none';
+        var localP = _localVer ? Promise.resolve(_localVer) : updLocalVersion();
+        Promise.all([localP, updRemoteManifest()]).then(function (res) {
+            var local = res[0], manifest = res[1];
+            updSetCurrent(local);
+            if (!manifest || !manifest.version) { setStatus('upd-status', 'Could not read the latest version.', 'err'); return; }
+            if (updCmp(manifest.version, local) > 0) {
+                _pendingIpk = manifest.ipkUrl || manifest.ipk_url || '';
+                document.getElementById('upd-new-version').textContent = 'v' + local + '  →  v' + manifest.version;
+                document.getElementById('upd-available').style.display = '';
+                setStatus('upd-status', '', '');
+                rebuildFocusables();
+            } else {
+                setStatus('upd-status', 'You’re on the latest version (v' + local + ').', 'ok');
+            }
+        }).catch(function () {
+            setStatus('upd-status', 'Update check failed — check your connection.', 'err');
+        });
+    });
+
+    document.getElementById('upd-install-btn').addEventListener('click', function () {
+        if (!_pendingIpk) return;
+        if (typeof webOS === 'undefined' || !webOS.service) {
+            setStatus('upd-progress', 'Install service isn’t available on this device.', 'err'); return;
+        }
+        setStatus('upd-progress', 'Installing… the app will restart when done.', '');
+        webOS.service.request('luna://com.webos.appInstallService/dev/install', {
+            method: 'install',
+            parameters: { id: UPD_APP_ID, ipkUrl: _pendingIpk },
+            onSuccess: function () {
+                setStatus('upd-progress', 'Installed — restarting…', 'ok');
+                setTimeout(function () { try { webOS.platformBack(); } catch (e) {} try { window.close(); } catch (e) {} }, 2000);
+            },
+            onFailure: function (err) {
+                var msg = err && (err.errorText || err.errorCode);
+                setStatus('upd-progress', 'Install failed: ' + (msg ? msg : 'unknown error'), 'err');
+            }
+        });
+    });
+
     /* ── Back navigation ───────────────────────────────────────────────────── */
     if (typeof tvGoBack !== 'function') {
         window.tvGoBack = function (backUrl) {

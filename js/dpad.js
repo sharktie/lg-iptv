@@ -94,7 +94,7 @@ function onTVKeyDown(e) {
         return;
     }
 
-    const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    const isFs = typeof isFullscreen === "function" ? isFullscreen() : false;
 
     switch (kc) {
         case _KEY.UP:

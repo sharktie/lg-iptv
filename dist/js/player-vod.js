@@ -54,8 +54,11 @@
   if (titleEl) titleEl.textContent = title || '';
 
   /* ── Start playback ──────────────────────────────────────────────────── */
-  if (url && window.player && typeof player.play === 'function') {
-    player.play(url);
+  /* Catch-up passes an array of candidate timeshift URLs in meta.urls so the
+     player can fall back across endpoint formats; VOD passes a single url. */
+  var playArg = meta && meta.urls && meta.urls.length ? meta.urls : url;
+  if ((url || meta && meta.urls && meta.urls.length) && window.player && typeof player.play === 'function') {
+    player.play(playArg);
   } else {
     var msg = document.getElementById('player-msg');
     if (msg) {
@@ -200,27 +203,51 @@
   var subsOpen = false,
     subsIdx = 0,
     subsOptions = [];
-  var activeSubLabel = 'off';
+  var activeSubLabel = 'off',
+    activeSubSize = 'md';
   var SUBS_PREF_KEY = 'vod_subs_pref';
   function buildSubsOptions() {
     var tracks = window.player && player.listSubtitles ? player.listSubtitles() : [];
     subsOptions = [{
+      kind: 'track',
       label: 'Off',
       track: 'off'
     }];
     tracks.forEach(function (t) {
       subsOptions.push({
+        kind: 'track',
         label: t.label,
         track: t
       });
     });
+    // Text size controls (always available)
+    activeSubSize = window.player && player.getSubSize ? player.getSubSize() : 'md';
+    subsOptions.push({
+      kind: 'size',
+      label: 'Text: Normal',
+      size: 'md',
+      sep: true
+    });
+    subsOptions.push({
+      kind: 'size',
+      label: 'Text: Large',
+      size: 'lg'
+    });
+    subsOptions.push({
+      kind: 'size',
+      label: 'Text: Larger',
+      size: 'xl'
+    });
+  }
+  function isCurrentOpt(opt) {
+    return opt.kind === 'size' ? opt.size === activeSubSize : opt.label.toLowerCase() === activeSubLabel;
   }
   function openSubs() {
     buildSubsOptions();
     subsList.innerHTML = '';
     subsOptions.forEach(function (opt, i) {
       var b = document.createElement('button');
-      b.className = 'subs-opt' + (opt.label.toLowerCase() === activeSubLabel ? ' current' : '');
+      b.className = 'subs-opt' + (isCurrentOpt(opt) ? ' current' : '') + (opt.sep ? ' subs-sep' : '');
       b.textContent = opt.label;
       b.addEventListener('click', function () {
         subsIdx = i;
@@ -230,7 +257,7 @@
     });
     subsIdx = 0;
     for (var i = 0; i < subsOptions.length; i++) {
-      if (subsOptions[i].label.toLowerCase() === activeSubLabel) {
+      if (subsOptions[i].kind === 'track' && subsOptions[i].label.toLowerCase() === activeSubLabel) {
         subsIdx = i;
         break;
       }
@@ -250,6 +277,9 @@
   function paintSubs() {
     var opts = subsList.querySelectorAll('.subs-opt');
     for (var i = 0; i < opts.length; i++) opts[i].classList.toggle('tv-focus-visible', i === subsIdx);
+    if (opts[subsIdx]) opts[subsIdx].scrollIntoView({
+      block: 'nearest'
+    });
   }
   function applySubs() {
     var opt = subsOptions[subsIdx];
@@ -257,11 +287,16 @@
       closeSubs();
       return;
     }
-    if (window.player && player.setSubtitle) player.setSubtitle(opt.track);
-    activeSubLabel = (opt.label || 'off').toLowerCase();
-    try {
-      localStorage.setItem(SUBS_PREF_KEY, activeSubLabel);
-    } catch (e) {}
+    if (opt.kind === 'size') {
+      if (window.player && player.applySubSize) player.applySubSize(opt.size);
+      activeSubSize = opt.size;
+    } else {
+      if (window.player && player.setSubtitle) player.setSubtitle(opt.track);
+      activeSubLabel = (opt.label || 'off').toLowerCase();
+      try {
+        localStorage.setItem(SUBS_PREF_KEY, activeSubLabel);
+      } catch (e) {}
+    }
     closeSubs();
   }
   function goBack() {

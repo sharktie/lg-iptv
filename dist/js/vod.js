@@ -10,92 +10,34 @@
 (function () {
   'use strict';
 
-  /* ── Config (same resolution as app.js) ──────────────────────────── */
-  function getCfg() {
-    try {
-      var profiles = JSON.parse(localStorage.getItem('iptv_profiles'));
-      if (profiles && profiles.length) {
-        var activeId;
-        try {
-          activeId = JSON.parse(localStorage.getItem('iptv_active_profile'));
-        } catch (e) {}
-        var profile = activeId && profiles.find(function (p) {
-          return p.id === activeId;
-        }) || profiles[0];
-        if (profile && profile.type !== 'm3u') {
-          var resolvedUrl;
-          try {
-            resolvedUrl = JSON.parse(localStorage.getItem('iptv_active_resolved_url'));
-          } catch (e) {}
-          return {
-            server_url: resolvedUrl || profile.server_urls && profile.server_urls[0] || '',
-            username: profile.username || '',
-            password: profile.password || ''
-          };
-        }
-      }
-    } catch (e) {}
-    try {
-      var s = JSON.parse(localStorage.getItem('iptv_custom_config'));
-      if (s && s.server_url) return s;
-    } catch (e) {}
-    if (typeof IPTV_CONFIG !== 'undefined' && IPTV_CONFIG && IPTV_CONFIG.server_url) return IPTV_CONFIG;
-    return null;
-  }
-  var cfg = getCfg();
+  /* ── Config + helpers (shared via iptv-core.js) ──────────────────── */
+  var cfg = IPTVCore.resolveConfig();
   function base() {
-    return (cfg.server_url || '').replace(/\/+$/, '');
+    return IPTVCore.base(cfg);
   }
   function apiUrl(params) {
-    return base() + '/player_api.php?username=' + encodeURIComponent(cfg.username) + '&password=' + encodeURIComponent(cfg.password) + '&' + params;
+    return IPTVCore.apiUrl(cfg, params);
   }
   function buildMovieUrl(id, ext) {
-    return base() + '/movie/' + encodeURIComponent(cfg.username) + '/' + encodeURIComponent(cfg.password) + '/' + encodeURIComponent(id) + '.' + (ext || 'mp4');
+    return IPTVCore.movieUrl(cfg, id, ext);
   }
   function buildEpisodeUrl(id, ext) {
-    return base() + '/series/' + encodeURIComponent(cfg.username) + '/' + encodeURIComponent(cfg.password) + '/' + encodeURIComponent(id) + '.' + (ext || 'mp4');
+    return IPTVCore.episodeUrl(cfg, id, ext);
+  }
+  function cacheGet(key) {
+    return IPTVCore.cacheGet(key);
+  }
+  function cacheSet(key, data) {
+    return IPTVCore.cacheSet(key, data);
+  }
+  function fetchJSON(url) {
+    return IPTVCore.fetchJSON(url);
+  }
+  function fetchCached(key, url) {
+    return IPTVCore.fetchCached(key, url);
   }
   function escHtml(s) {
     return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-
-  /* ── Cache (5h TTL) ──────────────────────────────────────────────── */
-  var CACHE_TTL = 5 * 60 * 60 * 1000;
-  function cacheGet(key) {
-    try {
-      var raw = localStorage.getItem(key);
-      if (!raw) return null;
-      var obj = JSON.parse(raw);
-      if (Date.now() - obj.ts > CACHE_TTL) {
-        localStorage.removeItem(key);
-        return null;
-      }
-      return obj.data;
-    } catch (e) {
-      return null;
-    }
-  }
-  function cacheSet(key, data) {
-    try {
-      localStorage.setItem(key, JSON.stringify({
-        ts: Date.now(),
-        data: data
-      }));
-    } catch (e) {}
-  }
-  function fetchJSON(url) {
-    return fetch(url).then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    });
-  }
-  function fetchCached(key, url) {
-    var c = cacheGet(key);
-    if (c) return Promise.resolve(c);
-    return fetchJSON(url).then(function (d) {
-      cacheSet(key, d);
-      return d;
-    });
   }
 
   /* ── Resume / Continue Watching ──────────────────────────────────── */
@@ -123,6 +65,61 @@
     return out.slice(0, 20);
   }
 
+  /* ── My List (watchlist) ─────────────────────────────────────────── */
+  var WATCHLIST_KEY = 'vod_watchlist';
+  function loadWatchlist() {
+    try {
+      return JSON.parse(localStorage.getItem(WATCHLIST_KEY)) || [];
+    } catch (e) {
+      return [];
+    }
+  }
+  function saveWatchlist(w) {
+    try {
+      localStorage.setItem(WATCHLIST_KEY, JSON.stringify(w));
+    } catch (e) {}
+  }
+  function wlKey(item) {
+    var t = item.__type || (item.series_id ? 'series' : 'movie');
+    return t + ':' + (t === 'series' ? item.series_id : item.stream_id);
+  }
+  function inWatchlist(item) {
+    var k = wlKey(item),
+      w = loadWatchlist();
+    for (var i = 0; i < w.length; i++) if (w[i].key === k) return true;
+    return false;
+  }
+  function toggleWatchlist(item) {
+    var k = wlKey(item),
+      w = loadWatchlist(),
+      idx = -1;
+    for (var i = 0; i < w.length; i++) if (w[i].key === k) {
+      idx = i;
+      break;
+    }
+    if (idx >= 0) {
+      w.splice(idx, 1);
+    } else {
+      var t = item.__type || (item.series_id ? 'series' : 'movie');
+      var entry = {
+        key: k,
+        __type: t,
+        name: titleOf(item),
+        ts: Date.now()
+      };
+      if (t === 'series') {
+        entry.series_id = item.series_id;
+        entry.cover = posterOf(item);
+      } else {
+        entry.stream_id = item.stream_id;
+        entry.stream_icon = posterOf(item);
+      }
+      w.unshift(entry);
+    }
+    saveWatchlist(w);
+    return idx < 0; // true if it was just added
+  }
+
   /* ── State ───────────────────────────────────────────────────────── */
   var activeType = 'movie';
   var hidden = {
@@ -145,7 +142,7 @@
     movie: null,
     series: null
   }; // category arrays per type
-  var RAIL_CAP = 40; // max cards rendered per rail
+  var RAIL_CAP = 20; // max cards rendered per rail
 
   /* ── DOM refs ────────────────────────────────────────────────────── */
   var elRails = document.getElementById('vod-rails');
@@ -239,16 +236,30 @@
   }
 
   /* ── Rails ───────────────────────────────────────────────────────── */
+  /* Recycling observer: loads rails near the viewport and UNLOADS rails that
+     scroll far away (clears their cards + images but keeps the row height) so
+     the DOM/memory stay bounded no matter how many categories exist. */
   var railObserver = 'IntersectionObserver' in window ? new IntersectionObserver(function (entries) {
     entries.forEach(function (en) {
-      if (en.isIntersecting) {
-        fillRail(en.target);
-        railObserver.unobserve(en.target);
-      }
+      if (en.isIntersecting) ensureRailLoaded(en.target);else unloadRail(en.target);
     });
   }, {
-    rootMargin: '400px'
+    root: elRails,
+    rootMargin: '900px 0px'
   }) : null;
+  function unloadRail(rail) {
+    if (!rail || rail.dataset.loaded !== '1' || rail.dataset.keep === '1') return;
+    var rails = railEls();
+    if (rails[railIndex] === rail) return; // never unload the focused rail
+    var track = rail.querySelector('.vod-rail-track');
+    if (track) {
+      if (imgObserver) track.querySelectorAll('img[data-src]').forEach(function (img) {
+        imgObserver.unobserve(img);
+      });
+      track.innerHTML = '';
+    }
+    rail.dataset.loaded = '0';
+  }
   function makeRail(titleText, type, catId) {
     var rail = document.createElement('section');
     rail.className = 'vod-rail';
@@ -303,16 +314,30 @@
     railIndex = 0;
     cardIndex = 0;
 
-    // Continue Watching first
+    // Continue Watching first (never recycled)
     var cw = continueWatching();
     if (cw.length) {
       var cwRail = makeRail('Continue Watching', '', '');
       cwRail.dataset.loaded = '1';
+      cwRail.dataset.keep = '1';
       var track = cwRail.querySelector('.vod-rail-track');
       cw.forEach(function (e) {
         track.appendChild(makeCard(e, 'progress'));
       });
       elRails.appendChild(cwRail);
+    }
+
+    // My List (saved titles, both types)
+    var wl = loadWatchlist();
+    if (wl.length) {
+      var wlRail = makeRail('My List', '', '');
+      wlRail.dataset.loaded = '1';
+      wlRail.dataset.keep = '1';
+      var wtrack = wlRail.querySelector('.vod-rail-track');
+      wl.forEach(function (e) {
+        wtrack.appendChild(makeCard(e, e.__type));
+      });
+      elRails.appendChild(wlRail);
     }
     var list = (cats[activeType] || []).filter(function (c) {
       return !hidden[activeType].has(String(c.category_id));
@@ -320,8 +345,12 @@
     list.forEach(function (c, i) {
       var rail = makeRail(c.category_name || 'Unnamed', activeType, c.category_id);
       elRails.appendChild(rail);
-      if (i < 2) fillRail(rail); // eager-load the top rails
-      else if (railObserver) railObserver.observe(rail);else fillRail(rail); // no IO (old WebOS) → load now
+      if (railObserver) {
+        railObserver.observe(rail); // observer handles load + unload
+        if (i < 2) fillRail(rail); // eager top rails for instant paint
+      } else {
+        fillRail(rail); // no IO (old WebOS) → load all
+      }
     });
     if (!list.length && !cw.length) showStatus('Nothing here yet.', false);else hideStatus();
     renderSidebarCats(); /* keep the sidebar category list in sync */
@@ -387,6 +416,8 @@
     document.getElementById('vod-detail-meta').innerHTML = meta.join('');
     var seasonsBox = document.getElementById('vod-seasons');
     var playBtn = document.getElementById('vod-play-btn');
+    updateListBtn(); // My List / In My List label
+
     elDetail.hidden = false;
     detailFocus = 0;
     if (detailIsSeries) {
@@ -403,6 +434,14 @@
     }
     focusZone('detail');
     paintDetailFocus();
+  }
+  function updateListBtn() {
+    if (!detailItem) return;
+    var saved = inWatchlist(detailItem);
+    setText('vod-list-label', saved ? 'In My List' : 'My List');
+    var icon = document.getElementById('vod-list-icon');
+    if (icon) icon.innerHTML = saved ? '<path d="M3.5 9.5L7 13l7.5-8" />' // check
+    : '<path d="M9 3v12M3 9h12" />'; // plus
   }
   function closeDetail() {
     elDetail.hidden = true;
@@ -569,21 +608,40 @@
     });
   }
   document.getElementById('vod-play-btn').addEventListener('click', playCurrentMovie);
+  document.getElementById('vod-list-btn').addEventListener('click', function () {
+    if (!detailItem) return;
+    toggleWatchlist(detailItem);
+    updateListBtn();
+  });
 
-  /* ── Global search ───────────────────────────────────────────────── */
-  var searchAll = null; // { movie:[], series:[] } once loaded
-  var searchTimer = null;
+  /* ── Global search (Web Worker, main-thread fallback) ─────────────────
+     The whole movie + series catalog can be tens of thousands of titles, so
+     fetching + indexing + filtering it on the main thread freezes the app. We
+     offload all of that to a worker; if Workers aren't usable on a given TV we
+     fall back to a slim in-memory index with early-exit filtering. Either way
+     the data is a pre-lower-cased index, not the full objects.                */
+  var SEARCH_LIMIT = 40,
+    SEARCH_MIN = 2;
+  var searchTimer = null,
+    searchReqId = 0;
+  var searchWorker = null,
+    searchReady = false,
+    searchUseWorker = false;
+  var searchIndex = null; // main-thread fallback index
+
   function openSearch() {
     prevZone = zone;
     elSearch.hidden = false;
     elSearchGrid.innerHTML = '';
-    document.getElementById('vod-search-hint').style.display = '';
-    focusZone('search');
     elSearchIn.value = '';
+    var hint = document.getElementById('vod-search-hint');
+    hint.style.display = '';
+    hint.textContent = 'Type to search your whole library.';
+    focusZone('search');
     setTimeout(function () {
       elSearchIn.focus();
     }, 30);
-    ensureSearchData();
+    initSearchEngine();
   }
   function closeSearch() {
     elSearch.hidden = true;
@@ -591,60 +649,137 @@
     focusZone('rails');
     paintRailFocus();
   }
-  function ensureSearchData() {
-    if (searchAll) return;
-    searchAll = {
-      movie: [],
-      series: []
-    };
-    fetchCached('vod_all_movie_' + base(), apiUrl('action=get_vod_streams')).then(function (d) {
-      searchAll.movie = Array.isArray(d) ? d : [];
-      runSearch();
-    }).catch(function () {});
-    fetchCached('vod_all_series_' + base(), apiUrl('action=get_series')).then(function (d) {
-      searchAll.series = Array.isArray(d) ? d : [];
-      runSearch();
-    }).catch(function () {});
+  function initSearchEngine() {
+    if (searchWorker || searchIndex) return; // already initialised
+    var movieUrl = apiUrl('action=get_vod_streams');
+    var seriesUrl = apiUrl('action=get_series');
+    try {
+      if (typeof Worker === 'undefined') throw new Error('no worker');
+      searchWorker = new Worker('../dist/js/vod-search-worker.js');
+      searchUseWorker = true;
+      searchWorker.onmessage = function (ev) {
+        var d = ev.data || {};
+        if (d.cmd === 'ready') {
+          searchReady = true;
+          if (!elSearch.hidden) runSearch();
+        } else if (d.cmd === 'results') {
+          if (d.reqId !== searchReqId) return; // a newer query superseded this
+          renderSearchResults(d.items, d.q, d.ready);
+        }
+      };
+      searchWorker.onerror = function () {
+        searchWorker = null;
+        searchUseWorker = false;
+        initFallbackSearch(movieUrl, seriesUrl);
+      };
+      searchWorker.postMessage({
+        cmd: 'load',
+        movieUrl: movieUrl,
+        seriesUrl: seriesUrl
+      });
+    } catch (e) {
+      initFallbackSearch(movieUrl, seriesUrl);
+    }
+  }
+  function buildIndexInto(idx, arr, type) {
+    if (!Array.isArray(arr)) return;
+    for (var i = 0; i < arr.length; i++) {
+      var m = arr[i],
+        id = type === 'series' ? m.series_id : m.stream_id;
+      if (id === undefined || id === null) continue;
+      var nm = m.name || m.title || '';
+      idx.push({
+        id: id,
+        type: type,
+        name: nm,
+        lc: nm.toLowerCase(),
+        icon: m.stream_icon || m.cover || m.cover_big || m.icon || ''
+      });
+    }
+  }
+  function initFallbackSearch(movieUrl, seriesUrl) {
+    if (searchIndex) return;
+    searchIndex = [];
+    var pending = 2;
+    function done() {
+      pending--;
+      if (pending === 0) {
+        searchReady = true;
+        if (!elSearch.hidden) runSearch();
+      }
+    }
+    fetchJSON(movieUrl).then(function (d) {
+      buildIndexInto(searchIndex, d, 'movie');
+      done();
+    }).catch(done);
+    fetchJSON(seriesUrl).then(function (d) {
+      buildIndexInto(searchIndex, d, 'series');
+      done();
+    }).catch(done);
+  }
+  function mainThreadSearch(q) {
+    q = q.toLowerCase();
+    var out = [];
+    for (var i = 0; i < searchIndex.length && out.length < SEARCH_LIMIT; i++) {
+      var it = searchIndex[i];
+      if (it.lc.indexOf(q) === -1) continue;
+      if (it.type === 'series') out.push({
+        series_id: it.id,
+        name: it.name,
+        cover: it.icon,
+        __type: 'series'
+      });else out.push({
+        stream_id: it.id,
+        name: it.name,
+        stream_icon: it.icon,
+        __type: 'movie'
+      });
+    }
+    return out;
   }
   function runSearch() {
-    var q = elSearchIn.value.trim().toLowerCase();
+    var q = elSearchIn.value.trim();
     var hint = document.getElementById('vod-search-hint');
-    if (!q) {
+    if (q.length < SEARCH_MIN) {
       elSearchGrid.innerHTML = '';
       hint.style.display = '';
+      hint.textContent = 'Type at least ' + SEARCH_MIN + ' characters to search.';
+      return;
+    }
+    searchReqId++;
+    if (searchUseWorker && searchWorker) {
+      searchWorker.postMessage({
+        cmd: 'search',
+        q: q,
+        limit: SEARCH_LIMIT,
+        reqId: searchReqId
+      });
+    } else if (searchIndex) {
+      renderSearchResults(mainThreadSearch(q), q.toLowerCase(), searchReady);
+    } else {
+      hint.style.display = '';
+      hint.textContent = 'Preparing search…';
+    }
+  }
+  function renderSearchResults(items, q, ready) {
+    var hint = document.getElementById('vod-search-hint');
+    elSearchGrid.innerHTML = '';
+    if (!items || !items.length) {
+      hint.style.display = '';
+      hint.textContent = ready ? 'No results for "' + q + '".' : 'Preparing search…';
       return;
     }
     hint.style.display = 'none';
-    if (!searchAll) {
-      ensureSearchData();
-      return;
-    }
-    var res = [];
-    ['movie', 'series'].forEach(function (t) {
-      (searchAll[t] || []).forEach(function (m) {
-        if (titleOf(m).toLowerCase().indexOf(q) !== -1) {
-          m.__type = t;
-          res.push(m);
-        }
-      });
-    });
-    res = res.slice(0, 120);
-    elSearchGrid.innerHTML = '';
-    if (!res.length) {
-      hint.style.display = '';
-      hint.textContent = 'No results for "' + q + '".';
-      return;
-    }
     var frag = document.createDocumentFragment();
-    res.forEach(function (m) {
+    items.forEach(function (m) {
       frag.appendChild(makeCard(m, m.__type));
     });
     elSearchGrid.appendChild(frag);
-    searchFocus = 0; /* ring is painted when the user presses DOWN out of the box */
+    searchFocus = 0;
   }
   elSearchIn.addEventListener('input', function () {
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(runSearch, 250);
+    searchTimer = setTimeout(runSearch, 300);
   });
 
   /* ── Status helpers ──────────────────────────────────────────────── */
@@ -806,8 +941,9 @@
       return;
     }
     railIndex = Math.max(0, Math.min(rails.length - 1, railIndex));
+    ensureRailLoaded(rails[railIndex]); // focused rail may have been recycled
     var cards = railCards(rails[railIndex]);
-    if (!cards.length) return;
+    if (!cards.length) return; // cards arrive async → fillRail repaints
     cardIndex = Math.max(0, Math.min(cards.length - 1, cardIndex));
     var card = cards[cardIndex];
     card.classList.add('tv-focus-visible');
@@ -822,7 +958,9 @@
   function detailItems() {
     var arr = [];
     var playBtn = document.getElementById('vod-play-btn');
+    var listBtn = document.getElementById('vod-list-btn');
     if (playBtn.style.display !== 'none') arr.push(playBtn);
+    if (listBtn) arr.push(listBtn);
     arr = arr.concat(Array.prototype.slice.call(document.querySelectorAll('#vod-season-tabs .vod-season-tab')));
     arr = arr.concat(Array.prototype.slice.call(document.querySelectorAll('#vod-episode-list .vod-ep-row')));
     return arr;
@@ -1026,7 +1164,15 @@
   document.getElementById('vod-search-close').addEventListener('click', closeSearch);
 
   /* ── Boot ────────────────────────────────────────────────────────── */
-  if (!cfg || !cfg.server_url) {
+  if (!cfg) {
+    showStatus('No server configured — open Settings first.', false);
+    return;
+  }
+  if (cfg.type === 'm3u') {
+    showStatus('VOD isn’t available for M3U playlists. Switch to an Xtream profile in Settings to browse movies & series.', false);
+    return;
+  }
+  if (!cfg.server_url) {
     showStatus('No server configured — open Settings first.', false);
     return;
   }

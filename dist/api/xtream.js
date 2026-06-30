@@ -214,6 +214,72 @@ function xtreamDecodeEPG(str) {
     return str;
   }
 }
+
+// Full programme guide for one channel, including past programmes. Unlike
+// get_short_epg this returns the whole stored archive window, and each listing
+// carries `has_archive` (1 = a catch-up recording exists). Titles/descriptions
+// are base64 like the short EPG. Used by the Catch-up page.
+function xtreamGetSimpleDataTable(_x8, _x9) {
+  return _xtreamGetSimpleDataTable.apply(this, arguments);
+} // Two-digit pad helper for the timeshift start string.
+function _xtreamGetSimpleDataTable() {
+  _xtreamGetSimpleDataTable = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6(cfg, streamId) {
+    var data, _t6;
+    return _regenerator().w(function (_context6) {
+      while (1) switch (_context6.p = _context6.n) {
+        case 0:
+          _context6.p = 0;
+          _context6.n = 1;
+          return _fetchJSON("".concat(_base(cfg), "/player_api.php?").concat(_auth(cfg), "&action=get_simple_data_table&stream_id=").concat(encodeURIComponent(streamId)));
+        case 1:
+          data = _context6.v;
+          return _context6.a(2, data && data.epg_listings || []);
+        case 2:
+          _context6.p = 2;
+          _t6 = _context6.v;
+          if (!(_t6 && _t6.message && /^HTTP \d/.test(_t6.message))) {
+            _context6.n = 3;
+            break;
+          }
+          throw _t6;
+        case 3:
+          return _context6.a(2, []);
+      }
+    }, _callee6, null, [[0, 2]]);
+  }));
+  return _xtreamGetSimpleDataTable.apply(this, arguments);
+}
+function _ts2(n) {
+  return (n < 10 ? "0" : "") + n;
+}
+
+// Format a Date as the `Y-m-d:H-i` string Xtream timeshift endpoints expect,
+// in the device's local timezone (matches the wall-clock time shown in the
+// programme list — correct when the TV and IPTV server share a timezone, which
+// is the common case for same-country providers).
+function xtreamFormatTimeshiftStart(date) {
+  return date.getFullYear() + "-" + _ts2(date.getMonth() + 1) + "-" + _ts2(date.getDate()) + ":" + _ts2(date.getHours()) + "-" + _ts2(date.getMinutes());
+}
+
+// Build candidate catch-up (timeshift) playback URLs for a past programme.
+// Returns them in priority order so IPTVPlayer can walk the list until one
+// plays — different panels expose different endpoints:
+//   1. path style   /timeshift/{u}/{p}/{duration}/{start}/{id}.m3u8
+//   2. query style   /streaming/timeshift.php?...&stream=&start=&duration=
+// `start` is a Date (programme start); `durationMin` is the length in minutes.
+function xtreamBuildTimeshiftURLs(cfg, streamId, start, durationMin) {
+  var baseUrl = _base(cfg);
+  var u = encodeURIComponent(cfg.username);
+  var p = encodeURIComponent(cfg.password);
+  var id = encodeURIComponent(streamId);
+  var dur = Math.max(1, Math.round(durationMin));
+  var startStr = xtreamFormatTimeshiftStart(start);
+  return [// Path style — colon kept literal (a valid path char; panels that don't
+  // url-decode path segments reject %3A).
+  "".concat(baseUrl, "/timeshift/").concat(u, "/").concat(p, "/").concat(dur, "/").concat(startStr, "/").concat(id, ".m3u8"),
+  // Query style — colon encoded, which is correct for a query value.
+  "".concat(baseUrl, "/streaming/timeshift.php?username=").concat(u, "&password=").concat(p) + "&stream=".concat(id, "&start=").concat(encodeURIComponent(startStr), "&duration=").concat(dur)];
+}
 function xtreamBaseUrl(cfg) {
   return _base(cfg);
 }

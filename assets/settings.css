@@ -45,8 +45,12 @@
 /* ── Modal bubble ────────────────────────────────────────────────────────────── */
 #settings-modal {
     position: relative;
-    width: min(980px, 94vw);
-    max-height: min(720px, 92vh);
+    /* Not min()/clamp() — those are Chromium 79+ and are dropped on webOS 5.40,
+       which left the modal shrunk to its content and overflowing (header/tabs
+       clipped off-screen). max-width/max-height are equivalent and universal. */
+    width: 94vw;
+    max-width: 980px;
+    max-height: 92vh;
     background: var(--bg2, #111218);
     border: 1px solid rgba(255,255,255,0.07);
     border-radius: 28px;

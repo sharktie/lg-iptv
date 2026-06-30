@@ -35,6 +35,7 @@
             <button class="tab-btn" data-value="livetv"  role="tab" aria-selected="false">Live TV</button>
             <button class="tab-btn" data-value="vod"     role="tab" aria-selected="false">VOD</button>
             <button class="tab-btn" data-value="cache"   role="tab" aria-selected="false">Cache</button>
+            <button class="tab-btn" data-value="updates" role="tab" aria-selected="false">Updates</button>
         </div>
 
         <!-- Body row: panels on left, QR panel always on right -->
@@ -211,6 +212,29 @@
                     </div>
                 </div>
 
+                <!-- Panel: Updates -->
+                <div class="settings-panel" id="panel-updates" role="tabpanel">
+                    <p class="panel-hint">Check GitHub for a newer version and install it.</p>
+                    <div class="cache-row">
+                        <div class="cache-info">
+                            <span class="cache-label">Current version</span>
+                            <span class="cache-desc" id="upd-current">—</span>
+                        </div>
+                        <button class="settings-btn settings-btn-secondary" id="upd-check-btn">Check for Updates</button>
+                    </div>
+                    <div id="upd-status" class="settings-status"></div>
+                    <div id="upd-available" style="display:none">
+                        <div class="cache-row">
+                            <div class="cache-info">
+                                <span class="cache-label">Update available</span>
+                                <span class="cache-desc" id="upd-new-version"></span>
+                            </div>
+                            <button class="settings-btn settings-btn-primary" id="upd-install-btn">⬇ Install</button>
+                        </div>
+                        <div id="upd-progress" class="settings-status"></div>
+                    </div>
+                </div>
+
             </div><!-- /panels-wrap -->
 
             <!-- QR panel — always visible, right of all panels -->
@@ -232,6 +256,7 @@
 </div><!-- /settings-page -->
 
 <script src="../dist/js/polyfills.js"></script>
+<script src="../dist/js/iptv-core.js"></script>
 <script src="../assets/qrcode.js"></script>
 <script src="../config/config.js"></script>
 <script src="../dist/api/xtream.js"></script>

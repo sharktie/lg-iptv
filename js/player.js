@@ -50,6 +50,8 @@ class IPTVPlayer {
         this._res      = "";
         this._activeEngine = "";
         this.video.tabIndex = -1;   // input handled by dpad.js
+        try { this.video.classList.add("subs-" + (localStorage.getItem("vod_subs_size") || "md")); }
+        catch (_) { this.video.classList.add("subs-md"); }
         this._setupKeys();
     }
 
@@ -173,10 +175,17 @@ class IPTVPlayer {
     }
     _alive(gen, tok) { return gen === this._gen && tok === this._tok; }
 
+    // `url` may be a single URL or an array of candidate URLs (e.g. catch-up,
+    // where the same programme is reachable via two timeshift endpoints). Each
+    // candidate is expanded into its native/HLS/TS attempts, tried in order.
     play(url) {
         if (!url) return;
-        if (url !== this._lastUrl) this._lowQuality = false;   // new channel → normal ABR
-        this._lastUrl = url;
+        const urls = Array.isArray(url) ? url.filter(Boolean) : [url];
+        if (!urls.length) return;
+        const key = urls.join("|");
+        if (key !== this._lastUrl) this._lowQuality = false;   // new content → normal ABR
+        this._lastUrl = key;
+        this._urls    = urls;   // original list, for replay (tryLowestQuality)
         const gen = ++this._gen;
         this._tok++;
         this._manual = false;
@@ -188,19 +197,25 @@ class IPTVPlayer {
         this._diag   = [];
         this._codecs = null;
         this._res    = "";
-        this._attempts   = this._buildAttempts(url);
+        this._attempts   = this._buildAttempts(urls);
         this._attemptIdx = 0;
         this._runAttempt(gen);
     }
 
-    _buildAttempts(url) {
-        const isHls = url.indexOf(".m3u8") !== -1;
-        const list = [{ engine: "native", url: url, label: "Native" }];
-        if (isHls) {
-            list.push({ engine: "hls", url: url, label: "HLS" });
-            const ts = url.replace(/\.m3u8(\?[^#]*)?$/i, ".ts$1");
-            if (ts !== url) list.push({ engine: "native", url: ts, label: "Native (TS)" });
-        }
+    _buildAttempts(urls) {
+        if (!Array.isArray(urls)) urls = [urls];
+        const list = [];
+        const multi = urls.length > 1;
+        urls.forEach(function (url, i) {
+            const tag   = multi ? " " + (i + 1) : "";
+            const isHls = url.indexOf(".m3u8") !== -1;
+            list.push({ engine: "native", url: url, label: "Native" + tag });
+            if (isHls) {
+                list.push({ engine: "hls", url: url, label: "HLS" + tag });
+                const ts = url.replace(/\.m3u8(\?[^#]*)?$/i, ".ts$1");
+                if (ts !== url) list.push({ engine: "native", url: ts, label: "Native TS" + tag });
+            }
+        });
         return list;
     }
 
@@ -357,6 +372,18 @@ class IPTVPlayer {
         }
         this._activeSub = track;
     }
+    getSubSize() {
+        if (this._subSize) return this._subSize;
+        try { return localStorage.getItem("vod_subs_size") || "md"; } catch (_) { return "md"; }
+    }
+    applySubSize(size) {                 // 'md' | 'lg' | 'xl'
+        size = size || "md";
+        var v = this.video;
+        v.classList.remove("subs-md", "subs-lg", "subs-xl");
+        v.classList.add("subs-" + size);
+        this._subSize = size;
+        try { localStorage.setItem("vod_subs_size", size); } catch (_) {}
+    }
     addExternalSubs(list) {
         if (!list || !list.length) return;
         const self = this;
@@ -386,9 +413,9 @@ class IPTVPlayer {
     }
 
     tryLowestQuality() {
-        if (!this._lastUrl) return;
+        if (!this._urls) return;
         this._lowQuality = true;
-        this.play(this._lastUrl);
+        this.play(this._urls);
         this._flash("Lowest quality");
     }
 

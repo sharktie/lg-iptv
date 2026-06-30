@@ -375,7 +375,7 @@ function _initAppXtream(_x2) {
 }
 function _initAppXtream2() {
   _initAppXtream2 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(setStatus) {
-    var _cfg;
+    var _cfg2;
     var cachedCh, cachedCat, categories, login, _yield$Promise$all, _yield$Promise$all2, channels, cats, _t3, _t4, _t5;
     return _regenerator().w(function (_context3) {
       while (1) switch (_context3.p = _context3.n) {
@@ -394,7 +394,7 @@ function _initAppXtream2() {
           setStatus("ERR: " + _t3.message, true);
           return _context3.a(2);
         case 4:
-          if ((_cfg = cfg) !== null && _cfg !== void 0 && _cfg.server_url) {
+          if ((_cfg2 = cfg) !== null && _cfg2 !== void 0 && _cfg2.server_url) {
             _context3.n = 5;
             break;
           }
@@ -845,25 +845,85 @@ function setupPip() {
   osd.innerHTML = "\n        <div id=\"fs-osd-top\">\n            <div id=\"fs-osd-channel\"></div>\n            <div id=\"fs-osd-top-right\">\n                <span id=\"fs-osd-quality\" hidden></span>\n                <span id=\"fs-osd-ch-num\" hidden></span>\n            </div>\n        </div>\n        <div id=\"fs-osd-bottom\">\n            <div id=\"fs-osd-epg-row\">\n                <span class=\"fs-osd-badge now\">NOW</span>\n                <span id=\"fs-osd-now-title\"></span>\n                <span id=\"fs-osd-now-time\"></span>\n            </div>\n            <div id=\"fs-osd-epg-row2\">\n                <span class=\"fs-osd-badge next\">NEXT</span>\n                <span id=\"fs-osd-next-title\"></span>\n                <span id=\"fs-osd-next-time\"></span>\n            </div>\n            <div id=\"fs-osd-bar-wrap\"><div id=\"fs-osd-bar-fill\"></div></div>\n        </div>";
   document.getElementById("pip-wrap").appendChild(osd);
 }
+
+// Fullscreen uses the native Fullscreen API as the primary path — it drives the
+// TV's hardware video plane correctly on devices and the simulators. We track
+// our own state (_fsActive) so Back always knows it's fullscreen (some webOS
+// versions, e.g. 5.40, don't report document.fullscreenElement). On those builds
+// native fullscreen also silently fails to fill the screen, so a short moment
+// after requesting it we MEASURE whether the player actually covered the
+// viewport; only if it did NOT do we switch on a CSS fallback (body.fs-fallback)
+// that hides the GUI and stretches the player. Using geometry — plus the native
+// flag when present — means the fallback can't misfire on devices/simulators
+// where native fullscreen works, so playback there is never disturbed.
+var _fsActive = false;
+var _fsCheckTimer = null;
+function isFullscreen() {
+  return _fsActive || !!(document.fullscreenElement || document.webkitFullscreenElement);
+}
 function toggleFullscreen() {
   var pip = document.getElementById("pip-wrap");
-  var isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
-  if (!isFs) {
-    var req = pip.requestFullscreen || pip.webkitRequestFullscreen;
-    if (req) req.call(pip);
-  } else {
-    var ex = document.exitFullscreen || document.webkitExitFullscreen;
-    if (ex) ex.call(document);
-  }
+  if (!pip) return;
+  if (!isFullscreen()) _enterFullscreen(pip);else _exitFullscreen(pip);
 }
+function _enterFullscreen(pip) {
+  _fsActive = true;
+  var btn = document.getElementById("pip-fullscreen-btn");
+  if (btn) btn.title = "Exit fullscreen";
+  var req = pip.requestFullscreen || pip.webkitRequestFullscreen;
+  if (req) {
+    try {
+      var rp = req.call(pip);
+      if (rp && rp.catch) rp.catch(function () {});
+    } catch (e) {}
+  }
+  if (currentChannel) showOSD();
+  clearTimeout(_fsCheckTimer);
+  _fsCheckTimer = setTimeout(_checkFsCoverage, 350);
+}
+
+// Did the player actually fill the screen? If native fullscreen is reported, or
+// the element measures as covering the viewport, we're good — no fallback. Only
+// when neither holds (native fullscreen silently didn't engage) do we apply the
+// CSS fallback. Measured BEFORE adding the sizing class so the reading is real.
+function _checkFsCoverage() {
+  if (!_fsActive) return;
+  var pip = document.getElementById("pip-wrap");
+  if (!pip) return;
+  var nativeActive = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  var r = pip.getBoundingClientRect();
+  var geomCovers = r.width >= window.innerWidth - 8 && r.height >= window.innerHeight - 8;
+  pip.classList.add("pip-fullscreen-active");
+  document.body.classList.toggle("fs-fallback", !(nativeActive || geomCovers));
+  if (currentChannel) showOSD();
+}
+function _exitFullscreen(pip) {
+  _fsActive = false;
+  clearTimeout(_fsCheckTimer);
+  if (document.fullscreenElement || document.webkitFullscreenElement) {
+    var ex = document.exitFullscreen || document.webkitExitFullscreen;
+    if (ex) {
+      try {
+        ex.call(document);
+      } catch (e) {}
+    }
+  }
+  if (pip) pip.classList.remove("pip-fullscreen-active");
+  document.body.classList.remove("fs-fallback");
+  var btn = document.getElementById("pip-fullscreen-btn");
+  if (btn) btn.title = "Fullscreen";
+  setTVZone("channel-list");
+}
+
+// Keep state/UI in sync with the platform; if native fullscreen does engage
+// (even late), drop any CSS fallback so the two never fight.
 function onFullscreenChange() {
-  var isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
-  document.getElementById("pip-fullscreen-btn").title = isFs ? "Exit fullscreen" : "Fullscreen";
-  document.getElementById("pip-wrap").classList.toggle("pip-fullscreen-active", isFs);
-  if (isFs) {
+  var native = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  if (native) {
+    document.body.classList.remove("fs-fallback");
     if (currentChannel) showOSD();
-  } else {
-    setTVZone("channel-list");
+  } else if (_fsActive) {
+    _exitFullscreen(document.getElementById("pip-wrap"));
   }
 }
 function showOSD() {
@@ -1562,7 +1622,7 @@ function _selectChannel() {
   return _selectChannel.apply(this, arguments);
 }
 function updateOSDIfFullscreen() {
-  if (!!(document.fullscreenElement || document.webkitFullscreenElement)) showOSD();
+  if (isFullscreen()) showOSD();
 }
 function setEPG(slot, title, time, desc) {
   document.getElementById("epg-".concat(slot, "-title")).textContent = title || "—";
@@ -1782,36 +1842,18 @@ function mergeXMLTVIntoEpgCache() {
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 
 window.onload = function () {
-  // ── Load active profile into IPTV_CONFIG ──────────────────────────────────
-  // Prefer the profiles system; fall back to legacy iptv_custom_config.
+  // ── Load active Xtream profile into IPTV_CONFIG (shared resolver) ──────────
+  // M3U profiles are handled separately via iptv_m3u_config / iptv_source_type.
   (function loadActiveProfile() {
     try {
-      var profiles = load("iptv_profiles", null);
-      if (profiles && profiles.length) {
-        var activeId = load("iptv_active_profile", null);
-        var profile = activeId && profiles.find(function (p) {
-          return p.id === activeId;
-        }) || profiles[0];
-        if (profile) {
-          var resolvedUrl = load("iptv_active_resolved_url", null);
-          var urls = Array.isArray(profile.server_urls) ? profile.server_urls : [];
-          window.IPTV_CONFIG = {
-            server_url: resolvedUrl || urls[0] || "",
-            server_urls: urls,
-            username: profile.username || "",
-            password: profile.password || ""
-          };
-          return;
-        }
-      }
-      // Legacy fallback
-      var savedCfg = load("iptv_custom_config", null);
-      if (savedCfg && savedCfg.server_url) window.IPTV_CONFIG = savedCfg;
+      var _cfg = typeof IPTVCore !== "undefined" && IPTVCore.resolveConfig();
+      if (_cfg && _cfg.type !== "m3u" && _cfg.server_url) window.IPTV_CONFIG = _cfg;
     } catch (_) {}
   })();
   loadXMLTVFromCache();
   initVirtualScroll();
   initTVNavigation();
+  if (typeof tvSetBackUrl === "function") tvSetBackUrl("../index.html");
   initApp();
   if (load("iptv_custom_epg_url", "")) {
     setTimeout(function () {

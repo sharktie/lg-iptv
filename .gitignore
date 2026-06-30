@@ -6,3 +6,7 @@ node_modules/
 # Local packaging output
 output/
 *.ipk
+
+# Local-only dev cruft (never part of a webOS app)
+.venv/
+.claude/

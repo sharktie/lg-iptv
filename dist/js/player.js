@@ -61,6 +61,11 @@ var IPTVPlayer = /*#__PURE__*/function () {
     this._res = "";
     this._activeEngine = "";
     this.video.tabIndex = -1; // input handled by dpad.js
+    try {
+      this.video.classList.add("subs-" + (localStorage.getItem("vod_subs_size") || "md"));
+    } catch (_) {
+      this.video.classList.add("subs-md");
+    }
     this._setupKeys();
   }
 
@@ -220,12 +225,20 @@ var IPTVPlayer = /*#__PURE__*/function () {
     value: function _alive(gen, tok) {
       return gen === this._gen && tok === this._tok;
     }
+
+    // `url` may be a single URL or an array of candidate URLs (e.g. catch-up,
+    // where the same programme is reachable via two timeshift endpoints). Each
+    // candidate is expanded into its native/HLS/TS attempts, tried in order.
   }, {
     key: "play",
     value: function play(url) {
       if (!url) return;
-      if (url !== this._lastUrl) this._lowQuality = false; // new channel → normal ABR
-      this._lastUrl = url;
+      var urls = Array.isArray(url) ? url.filter(Boolean) : [url];
+      if (!urls.length) return;
+      var key = urls.join("|");
+      if (key !== this._lastUrl) this._lowQuality = false; // new content → normal ABR
+      this._lastUrl = key;
+      this._urls = urls; // original list, for replay (tryLowestQuality)
       var gen = ++this._gen;
       this._tok++;
       this._manual = false;
@@ -236,32 +249,38 @@ var IPTVPlayer = /*#__PURE__*/function () {
       this._diag = [];
       this._codecs = null;
       this._res = "";
-      this._attempts = this._buildAttempts(url);
+      this._attempts = this._buildAttempts(urls);
       this._attemptIdx = 0;
       this._runAttempt(gen);
     }
   }, {
     key: "_buildAttempts",
-    value: function _buildAttempts(url) {
-      var isHls = url.indexOf(".m3u8") !== -1;
-      var list = [{
-        engine: "native",
-        url: url,
-        label: "Native"
-      }];
-      if (isHls) {
+    value: function _buildAttempts(urls) {
+      if (!Array.isArray(urls)) urls = [urls];
+      var list = [];
+      var multi = urls.length > 1;
+      urls.forEach(function (url, i) {
+        var tag = multi ? " " + (i + 1) : "";
+        var isHls = url.indexOf(".m3u8") !== -1;
         list.push({
-          engine: "hls",
-          url: url,
-          label: "HLS"
-        });
-        var ts = url.replace(/\.m3u8(\?[^#]*)?$/i, ".ts$1");
-        if (ts !== url) list.push({
           engine: "native",
-          url: ts,
-          label: "Native (TS)"
+          url: url,
+          label: "Native" + tag
         });
-      }
+        if (isHls) {
+          list.push({
+            engine: "hls",
+            url: url,
+            label: "HLS" + tag
+          });
+          var ts = url.replace(/\.m3u8(\?[^#]*)?$/i, ".ts$1");
+          if (ts !== url) list.push({
+            engine: "native",
+            url: ts,
+            label: "Native TS" + tag
+          });
+        }
+      });
       return list;
     }
   }, {
@@ -500,6 +519,29 @@ var IPTVPlayer = /*#__PURE__*/function () {
       this._activeSub = track;
     }
   }, {
+    key: "getSubSize",
+    value: function getSubSize() {
+      if (this._subSize) return this._subSize;
+      try {
+        return localStorage.getItem("vod_subs_size") || "md";
+      } catch (_) {
+        return "md";
+      }
+    }
+  }, {
+    key: "applySubSize",
+    value: function applySubSize(size) {
+      // 'md' | 'lg' | 'xl'
+      size = size || "md";
+      var v = this.video;
+      v.classList.remove("subs-md", "subs-lg", "subs-xl");
+      v.classList.add("subs-" + size);
+      this._subSize = size;
+      try {
+        localStorage.setItem("vod_subs_size", size);
+      } catch (_) {}
+    }
+  }, {
     key: "addExternalSubs",
     value: function addExternalSubs(list) {
       if (!list || !list.length) return;
@@ -532,9 +574,9 @@ var IPTVPlayer = /*#__PURE__*/function () {
   }, {
     key: "tryLowestQuality",
     value: function tryLowestQuality() {
-      if (!this._lastUrl) return;
+      if (!this._urls) return;
       this._lowQuality = true;
-      this.play(this._lastUrl);
+      this.play(this._urls);
       this._flash("Lowest quality");
     }
   }, {
