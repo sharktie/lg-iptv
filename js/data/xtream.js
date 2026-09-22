@@ -106,9 +106,11 @@ async function xtreamGetEPG(cfg, streamId) {
     }
 }
 
+/* EPG titles/descriptions are base64 of UTF-8. atob() alone yields one char per
+   byte, which rendered every Greek title as "Î•Î»Î»..." — Charset decodes the
+   bytes. */
 function xtreamDecodeEPG(str) {
-    if (!str) return '';
-    try { return atob(str); } catch (e) { return str; }
+    return Charset.fromBase64(str);
 }
 
 /* Full programme guide for one channel, including past programmes. Unlike

@@ -430,33 +430,25 @@ function loadCustomXMLTV(_x, _x2) {
 }
 function _loadCustomXMLTV() {
   _loadCustomXMLTV = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(url, matchField) {
-    var res, text, parser, doc, channelMap, parsed, count, _t3;
+    var text, parser, doc, channelMap, parsed, count, _t3;
     return _regenerator().w(function (_context3) {
       while (1) switch (_context3.p = _context3.n) {
         case 0:
           _context3.p = 0;
           _context3.n = 1;
-          return fetch(url);
+          return Net.text(url, {
+            timeout: 60000
+          });
         case 1:
-          res = _context3.v;
-          if (res.ok) {
-            _context3.n = 2;
-            break;
-          }
-          throw new Error("HTTP " + res.status);
-        case 2:
-          _context3.n = 3;
-          return res.text();
-        case 3:
           text = _context3.v;
           parser = new DOMParser();
           doc = parser.parseFromString(text, "application/xml");
           if (!doc.querySelector("parseerror")) {
-            _context3.n = 4;
+            _context3.n = 2;
             break;
           }
           throw new Error("Invalid XMLTV XML");
-        case 4:
+        case 2:
           channelMap = {};
           doc.querySelectorAll("channel").forEach(function (ch) {
             var _ch$querySelector;
@@ -496,16 +488,16 @@ function _loadCustomXMLTV() {
           setSettingsStatus("epg-load-status", "\u2713 Loaded ".concat(count, " channels from XMLTV."), "ok");
           mergeXMLTVIntoEpgCache();
           refreshTimeline();
-          _context3.n = 6;
+          _context3.n = 4;
           break;
-        case 5:
-          _context3.p = 5;
+        case 3:
+          _context3.p = 3;
           _t3 = _context3.v;
           setSettingsStatus("epg-load-status", "Error: " + _t3.message, "err");
-        case 6:
+        case 4:
           return _context3.a(2);
       }
-    }, _callee3, null, [[0, 5]]);
+    }, _callee3, null, [[0, 3]]);
   }));
   return _loadCustomXMLTV.apply(this, arguments);
 }

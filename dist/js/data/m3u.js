@@ -136,54 +136,34 @@ function m3uParse(text) {
 }
 
 // ── Fetch + parse ─────────────────────────────────────────────────────────────
+
+// Net.text rather than res.text(): playlists from regional providers are often
+// windows-1253 / ISO-8859-7, which res.text() would decode as UTF-8 and turn
+// every non-Latin channel and group name into "�".
 function m3uFetchPlaylist(_x) {
   return _m3uFetchPlaylist.apply(this, arguments);
 } // ── Public API (mirrors xtream shape) ─────────────────────────────────────────
 function _m3uFetchPlaylist() {
   _m3uFetchPlaylist = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee(url) {
-    var ctrl, tid, res, text, _t;
+    var text;
     return _regenerator().w(function (_context) {
-      while (1) switch (_context.p = _context.n) {
+      while (1) switch (_context.n) {
         case 0:
-          ctrl = new AbortController();
-          tid = setTimeout(function () {
-            return ctrl.abort();
-          }, 30000); // covers both fetch + body read
-          _context.p = 1;
-          _context.n = 2;
-          return fetch(url, {
-            signal: ctrl.signal
+          _context.n = 1;
+          return Net.text(url, {
+            timeout: 30000
           });
-        case 2:
-          res = _context.v;
-          if (res.ok) {
-            _context.n = 3;
-            break;
-          }
-          throw new Error("HTTP " + res.status);
-        case 3:
-          _context.n = 4;
-          return res.text();
-        case 4:
+        case 1:
           text = _context.v;
-          // body still covered by abort signal
-          clearTimeout(tid);
           if (text.includes("#EXTM3U")) {
-            _context.n = 5;
+            _context.n = 2;
             break;
           }
           throw new Error("Not a valid M3U playlist");
-        case 5:
+        case 2:
           return _context.a(2, m3uParse(text));
-        case 6:
-          _context.p = 6;
-          _t = _context.v;
-          clearTimeout(tid);
-          throw _t;
-        case 7:
-          return _context.a(2);
       }
-    }, _callee, null, [[1, 6]]);
+    }, _callee);
   }));
   return _m3uFetchPlaylist.apply(this, arguments);
 }

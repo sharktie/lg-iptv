@@ -283,9 +283,9 @@ let xmltvCache = {};
 
 async function loadCustomXMLTV(url, matchField) {
     try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        const text   = await res.text();
+        /* Net.text honours the file's own `<?xml encoding="…"?>`, which is
+           lost once the body is a string — DOMParser cannot recover it. */
+        const text   = await Net.text(url, { timeout: 60000 });
         const parser = new DOMParser();
         const doc    = parser.parseFromString(text, "application/xml");
         if (doc.querySelector("parseerror")) throw new Error("Invalid XMLTV XML");
