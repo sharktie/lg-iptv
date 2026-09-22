@@ -128,6 +128,19 @@ window.Store = function () {
     }
     return n;
   }
+
+  /* ── Cache epoch ──────────────────────────────────────────────────────────
+     Bump when a fix changes what cached provider data SHOULD contain. Cached
+     lists are only refetched when they expire (hours), and the live-TV list
+     only repaints when its length changes — so without this, channel names
+     cached while text decoding was broken stayed garbled after the update.
+     Epoch 1: charset-aware decoding (core/charset.js). */
+  var CACHE_EPOCH = 1;
+  var CACHE_PREFIXES = ['iptv_ch_', 'iptv_cat_', 'iptv_m3u_', 'iptv_epg_', 'vod_cats_', 'vod_content_', 'cu_channels_', 'cu_cats_'];
+  if (getRaw('iptv_cache_epoch') !== String(CACHE_EPOCH)) {
+    for (var p = 0; p < CACHE_PREFIXES.length; p++) removeByPrefix(CACHE_PREFIXES[p]);
+    setRaw('iptv_cache_epoch', CACHE_EPOCH);
+  }
   return {
     get: get,
     set: set,

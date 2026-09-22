@@ -106,20 +106,13 @@ function m3uParse(text) {
 
 // ── Fetch + parse ─────────────────────────────────────────────────────────────
 
+// Net.text rather than res.text(): playlists from regional providers are often
+// windows-1253 / ISO-8859-7, which res.text() would decode as UTF-8 and turn
+// every non-Latin channel and group name into "�".
 async function m3uFetchPlaylist(url) {
-    const ctrl = new AbortController();
-    const tid  = setTimeout(() => ctrl.abort(), 30000);   // covers both fetch + body read
-    try {
-        const res  = await fetch(url, { signal: ctrl.signal });
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        const text = await res.text();   // body still covered by abort signal
-        clearTimeout(tid);
-        if (!text.includes("#EXTM3U")) throw new Error("Not a valid M3U playlist");
-        return m3uParse(text);
-    } catch (err) {
-        clearTimeout(tid);
-        throw err;
-    }
+    const text = await Net.text(url, { timeout: 30000 });
+    if (!text.includes("#EXTM3U")) throw new Error("Not a valid M3U playlist");
+    return m3uParse(text);
 }
 
 // ── Public API (mirrors xtream shape) ─────────────────────────────────────────

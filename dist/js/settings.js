@@ -91,13 +91,13 @@
   /* Changing the active profile invalidates the Live TV channel cache, which
      is stored under GLOBAL keys rather than per-profile ones — so whatever is
      in there belongs to the profile that just stopped being active.
-       Done here rather than at each call site because there are three ways the
+      Done here rather than at each call site because there are three ways the
      active profile changes (saving/connecting a profile, applying a remote
      config, and deleting the active one so the next takes over) and only the
      first two cleared it. Deleting a profile left the previous account's
      channel list on screen under the new account's credentials until the
      background refresh landed.
-       The EPG and VOD caches need no clearing any more: they are keyed by
+      The EPG and VOD caches need no clearing any more: they are keyed by
      Config.scope(), so another profile's entries simply aren't found. */
   function setActiveId(id) {
     var changed = String(getActiveId() || '') !== String(id || '');
@@ -595,7 +595,7 @@
      subtitle menu instead — both are judged against what is on screen, and a
      delay picked blind in Settings is a guess. player/engine.js reads all of
      them when it starts, so a change here applies to the next stream.
-       Written raw, not JSON: the player reads them with a plain getItem, and
+      Written raw, not JSON: the player reads them with a plain getItem, and
      JSON-quoting would make every stored value fail its comparison. */
   (function populateSubtitleAppearance() {
     var pairs = [['cfg-subs-size', 'vod_subs_size', 'md', 'Text size'], ['cfg-subs-style', 'vod_sub_style', 'shadow', 'Style'], ['cfg-subs-colour', 'vod_sub_colour', 'white', 'Colour']];

@@ -69,15 +69,34 @@ window.Net = function () {
       throw err;
     });
   }
-  function json(url, opts) {
-    return request(url, opts).then(function (r) {
-      return r.json();
+
+  /* Body as a string, decoded by Charset rather than by the platform.
+     Response.text() is UTF-8 no matter what the server declares, which turned
+     every windows-1253 Greek channel name into "�" — so the bytes are read
+     and the charset chosen here instead. Falls back to text() when the
+     response cannot hand over bytes losslessly (the XHR shim on a browser
+     that refused responseType). */
+  function bodyText(res) {
+    if (typeof res.arrayBuffer !== 'function' || res.lossyBuffer) return res.text();
+    return res.arrayBuffer().then(function (buf) {
+      var type = '';
+      try {
+        type = res.headers && res.headers.get('content-type') || '';
+      } catch (e) {}
+      return Charset.decode(buf, type);
     });
   }
+  function withBytes(opts) {
+    var o = {};
+    for (var k in opts) if (Object.prototype.hasOwnProperty.call(opts, k)) o[k] = opts[k];
+    o.responseType = 'arraybuffer';
+    return o;
+  }
+  function json(url, opts) {
+    return request(url, withBytes(opts || {})).then(bodyText).then(Charset.parseJSON);
+  }
   function text(url, opts) {
-    return request(url, opts).then(function (r) {
-      return r.text();
-    });
+    return request(url, withBytes(opts || {})).then(bodyText).then(Charset.repair);
   }
 
   /* Fetch that answers from Store's TTL cache when it can. On a cache miss

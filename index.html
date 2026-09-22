@@ -55,9 +55,10 @@
     </div>
 
     <!-- Load order is a dependency chain, not a preference:
-         polyfills → core (Store → Net → Config, Dom) → page script. -->
+         polyfills → core (Store → Charset → Net → Config, Dom) → page script. -->
     <script src="dist/js/polyfills.js"></script>
     <script src="dist/js/core/store.js"></script>
+    <script src="dist/js/core/charset.js"></script>
     <script src="dist/js/core/net.js"></script>
     <script src="dist/js/core/dom.js"></script>
     <script src="dist/js/core/config.js"></script>

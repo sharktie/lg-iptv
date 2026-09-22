@@ -201,6 +201,9 @@ function _xtreamGetCategories() {
 function xtreamGetEPG(_x4, _x5) {
   return _xtreamGetEPG.apply(this, arguments);
 }
+/* EPG titles/descriptions are base64 of UTF-8. atob() alone yields one char per
+   byte, which rendered every Greek title as "Î•Î»Î»..." — Charset decodes the
+   bytes. */
 function _xtreamGetEPG() {
   _xtreamGetEPG = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(cfg, streamId) {
     var data, _t5;
@@ -229,12 +232,7 @@ function _xtreamGetEPG() {
   return _xtreamGetEPG.apply(this, arguments);
 }
 function xtreamDecodeEPG(str) {
-  if (!str) return '';
-  try {
-    return atob(str);
-  } catch (e) {
-    return str;
-  }
+  return Charset.fromBase64(str);
 }
 
 /* Full programme guide for one channel, including past programmes. Unlike

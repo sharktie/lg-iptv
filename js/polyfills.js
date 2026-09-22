@@ -307,6 +307,11 @@
                     resolve({
                         ok:     xhr.status >= 200 && xhr.status < 300,
                         status: xhr.status,
+                        /* Bytes were asked for but XHR could not supply them,
+                           so arrayBuffer() below would be a lossy re-widening
+                           of already-decoded text. Net checks this and reads
+                           text() instead. */
+                        lossyBuffer: opts.responseType === 'arraybuffer' && !wantBuffer,
                         /* Enough of the Headers interface for the one thing the
                            app does with it: refusing to read a response body
                            that turns out to be a 2 GB movie rather than the
